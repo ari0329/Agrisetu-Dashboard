@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+myenv/
+.env
+
+# Models (large files — add separately or via Git LFS)
+models/*.pkl
+
+# Generated files
+reports/*.pdf
+logs/*.log
+
+# OS
+.DS_Store
+*.egg-info/
+dist/
