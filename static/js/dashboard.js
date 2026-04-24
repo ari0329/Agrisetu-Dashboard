@@ -73,17 +73,38 @@ function updateButtonStates() {
   const btnReport  = $("#btn-report");
   if (!btnPredict) return;
 
-  if (window.state.connected) {
-    btnPredict.disabled = false;
-    btnPredict.title    = "";
-    btnReport.disabled  = false;
-    btnReport.title     = "";
-  } else {
-    btnPredict.disabled = true;
-    btnPredict.title    = "Arduino must be online to predict";
-    btnReport.disabled  = true;
-    btnReport.title     = "Arduino must be online to generate report";
-  }
+  // Buttons ONLY enabled when Arduino is actually connected — never for simulated/offline data
+  const canPredict = window.state.connected === true;
+
+  btnPredict.disabled = !canPredict;
+  btnPredict.title    = canPredict ? "" : "Arduino must be online to predict";
+  btnReport.disabled  = !canPredict;
+  btnReport.title     = canPredict ? "" : "Arduino must be online to generate report";
+}
+
+// ── Local sensor simulation (used when backend/Arduino both offline) ──────────
+function generateSimulatedSensors() {
+  const hour  = new Date().getHours();
+  const t     = 25 + 4 * Math.sin(Math.PI * (hour - 6) / 12) + (Math.random() - 0.5) * 2;
+  const m     = 45 + (Math.random() - 0.5) * 20;
+  const wl    = 60 + (Math.random() - 0.5) * 30;
+  const hum   = Math.max(35, Math.min(98, 80 - (t - 20) * 1.2 + (Math.random()-0.5)*10));
+  const light = hour >= 6 && hour <= 18
+    ? Math.round(Math.sin(Math.PI*(hour-6)/12) * 85 + Math.random()*15) : 0;
+
+  return {
+    soil_moisture:    Math.round(m * 10) / 10,
+    soil_temperature: Math.round(t * 10) / 10,
+    water_level:      Math.round(wl),
+    air_temperature:  Math.round((t + 1.5) * 10) / 10,
+    humidity:         Math.round(hum * 10) / 10,
+    rainfall:         0,
+    light_intensity:  light,
+    ph:               Math.round((5.8 + Math.random() * 1.4) * 100) / 100,
+    simulated:        true,
+    source:           "browser_simulation",
+    timestamp:        new Date().toISOString(),
+  };
 }
 
 // ── Sensor data polling ───────────────────────────────────────────────────────
@@ -92,19 +113,19 @@ async function fetchSensorData() {
     const res  = await fetch("/api/sensor-data");
 
     if (res.status === 503) {
-      // Arduino offline
-      const json = await res.json();
-      window.state.sensorData = null;
       window.state.connected  = false;
+      window.state.sensorData = null;
       renderSensorCardsOffline();
-      updateButtonStates();
       updateSensorSummary();
       updateQuickStats();
+      updateButtonStates();
       return;
     }
 
     const json = await res.json();
     if (!json.success) throw new Error(json.error);
+
+    const wasOffline = !window.state.connected;
 
     window.state.sensorData = json.data;
     window.state.connected  = true;
@@ -115,8 +136,30 @@ async function fetchSensorData() {
     updateQuickStats();
     updateButtonStates();
 
+    // If Arduino just came online, clear the "waiting" placeholder in result panel
+    if (wasOffline) {
+      const panel = $("#result-panel");
+      if (panel && panel.querySelector(".no-result")) {
+        panel.innerHTML = `
+          <div class="no-result">
+            <span class="no-result-icon">✅</span>
+            Arduino connected!<br>
+            <span style="font-size:11px;margin-top:8px;display:block;color:var(--text-dim);">
+              Fill in your details and click <b>Predict</b> to get a crop recommendation.
+            </span>
+          </div>`;
+      }
+    }
+
   } catch (err) {
     console.warn("Sensor fetch error:", err);
+    // Network error — clear data and show offline state
+    window.state.connected  = false;
+    window.state.sensorData = null;
+    renderSensorCardsOffline();
+    updateSensorSummary();
+    updateQuickStats();
+    updateButtonStates();
   }
 }
 
@@ -127,12 +170,42 @@ function renderSensorCards(d) {
   setCard("st",  d.soil_temperature,  60, "");
   setCard("wl",  d.water_level,      100, d.water_level < 25 ? "coral" : "sky");
 
-  // Sensors NOT on this Arduino — show N/A
-  setCardNA("at");
-  setCardNA("hum");
-  setCardNA("rain");
-  setCardNA("lux");
-  setCardNA("ph");
+  // Absent sensors — backend provides simulated values correlated with soil data
+  const sim = d.simulated;  // true when values are estimated
+
+  if (d.air_temperature != null) {
+    setCard("at", d.air_temperature, 50, "amber");
+    markSimulated("at", sim);
+  } else { setCardNA("at"); }
+
+  if (d.humidity != null) {
+    setCard("hum", d.humidity, 100, "");
+    markSimulated("hum", sim);
+  } else { setCardNA("hum"); }
+
+  if (d.rainfall != null) {
+    setCard("rain", d.rainfall, 200, "sky");
+    markSimulated("rain", sim);
+  } else { setCardNA("rain"); }
+
+  if (d.light_intensity != null) {
+    setCard("lux", d.light_intensity, 100, "amber");
+    markSimulated("lux", sim);
+  } else { setCardNA("lux"); }
+
+  if (d.ph != null) {
+    setCard("ph", d.ph, 14, d.ph < 6 || d.ph > 7.5 ? "coral" : "");
+    markSimulated("ph", sim);
+  } else { setCardNA("ph"); }
+}
+
+function markSimulated(id, isSimulated) {
+  const unitEl = document.querySelector(`#card-${id} .sensor-unit`);
+  if (!unitEl) return;
+  if (isSimulated) {
+    unitEl.innerHTML = unitEl.textContent.replace(/\s*~sim.*$/, "") +
+      ' <span style="font-size:9px;color:var(--text-dim);opacity:0.7;" title="Sensor not on device — estimated value">~sim</span>';
+  }
 }
 
 function renderSensorCardsOffline() {
@@ -188,7 +261,14 @@ function updateSensorSummary() {
   } else {
     set("#sum-sm",  d.soil_moisture?.toFixed(1)    ?? "—");
     set("#sum-st",  d.soil_temperature?.toFixed(1) ?? "—");
-    set("#sum-hum", d.humidity != null ? d.humidity.toFixed(1) : "N/A");
+    const humEl = $("#sum-hum");
+    if (humEl) {
+      if (d.humidity != null) {
+        humEl.textContent = d.humidity.toFixed(1) + (d.simulated ? " ~sim" : "");
+      } else {
+        humEl.textContent = "N/A";
+      }
+    }
   }
 }
 
@@ -201,29 +281,33 @@ function updateQuickStats() {
 
   if (!d) {
     set("#mini-sm-val",  `— <span class="mini-stat-unit">%</span>`);
-    set("#mini-at-val",  `N/A <span class="mini-stat-unit">°C</span>`);
-    set("#mini-hum-val", `N/A <span class="mini-stat-unit">%</span>`);
+    set("#mini-at-val",  `— <span class="mini-stat-unit">°C</span>`);
+    set("#mini-hum-val", `— <span class="mini-stat-unit">%</span>`);
     const src = $("#data-source");
     if (src) src.textContent = "❌ Arduino offline";
     return;
   }
 
+  const simTag = d.simulated
+    ? `<span style="font-size:9px;color:var(--text-dim);margin-left:2px;" title="Estimated — sensor not on device">~sim</span>`
+    : "";
+
   set("#mini-sm-val",
     `${d.soil_moisture?.toFixed(1) ?? "—"}<span class="mini-stat-unit"> %</span>`);
   set("#mini-at-val",
     d.air_temperature != null
-      ? `${d.air_temperature.toFixed(1)}<span class="mini-stat-unit"> °C</span>`
+      ? `${d.air_temperature.toFixed(1)}<span class="mini-stat-unit"> °C</span>${simTag}`
       : `N/A <span class="mini-stat-unit">°C</span>`);
   set("#mini-hum-val",
     d.humidity != null
-      ? `${d.humidity.toFixed(1)}<span class="mini-stat-unit"> %</span>`
+      ? `${d.humidity.toFixed(1)}<span class="mini-stat-unit"> %</span>${simTag}`
       : `N/A <span class="mini-stat-unit">%</span>`);
 
   const src = $("#data-source");
   if (src) {
-    src.textContent = d.source === "thingesp" ? "📡 ThingESP Live"
-                    : d.source === "cached"   ? "🕐 Cached data"
-                    : "🔄 Unknown";
+    src.textContent = d.source === "arduino_direct" ? "🔌 Arduino Direct"
+                    : d.source === "cached"         ? "🕐 Cached data"
+                    : "🔄 Live";
   }
 }
 
@@ -315,14 +399,62 @@ function updateChart() {
   window.state.chart.update("quiet");
 }
 
+// ── Local rule-based prediction (runs in-browser when backend is offline) ────
+function localRulePredict(sensor, preferredCrop) {
+  const m = sensor.soil_moisture    ?? 50;
+  const t = sensor.soil_temperature ?? 25;
+  const h = sensor.humidity         ?? 60;
+  const r = sensor.rainfall         ?? 0;
+
+  let crop, months, reason;
+  if (m > 70 && t > 27)        { crop = "Rice";      months = 4;  reason = "High moisture + warm temp ideal for rice"; }
+  else if (m < 38 && t < 23)   { crop = "Wheat";     months = 5;  reason = "Low moisture + cool temp suits wheat"; }
+  else if (m > 65 || r > 100)  { crop = "Sugarcane"; months = 12; reason = "High moisture / rainfall suits sugarcane"; }
+  else if (40 <= m && m <= 70) { crop = "Maize";     months = 3;  reason = "Moderate moisture ideal for maize"; }
+  else if (preferredCrop)      { crop = preferredCrop.charAt(0).toUpperCase() + preferredCrop.slice(1); months = 4; reason = "Based on your preferred crop selection"; }
+  else                         { crop = "Soybean";   months = 4;  reason = "Balanced conditions suit soybean"; }
+
+  const thresholds = {
+    wheat:{moisture:[30,60],temp:[15,25]}, rice:{moisture:[60,90],temp:[25,35]},
+    maize:{moisture:[40,70],temp:[20,30]}, sugarcane:{moisture:[65,90],temp:[25,38]},
+    soybean:{moisture:[45,75],temp:[20,30]},
+  };
+  const key = crop.toLowerCase();
+  const th  = thresholds[key];
+  let conf  = 0.72;
+  if (th) {
+    const ms = m >= th.moisture[0] && m <= th.moisture[1] ? 1.0 : Math.max(0, 1 - Math.abs(m - (th.moisture[0]+th.moisture[1])/2)/40);
+    const ts = t >= th.temp[0]    && t <= th.temp[1]    ? 1.0 : Math.max(0, 1 - Math.abs(t - (th.temp[0]+th.temp[1])/2)/20);
+    conf = Math.round((ms*0.5 + ts*0.5) * 100) / 100;
+  }
+
+  const alerts = [];
+  if (m < 30) alerts.push({type:"warning", msg:"Low soil moisture — irrigation recommended"});
+  if (m > 82) alerts.push({type:"info",    msg:"High moisture — check drainage"});
+  if (t > 36) alerts.push({type:"danger",  msg:"Heat stress risk — apply shade/cooling"});
+
+  return {
+    recommended_crop: crop,
+    growth_months:    months,
+    confidence:       conf,
+    confidence_pct:   Math.round(conf * 100),
+    prediction_text:  "",
+    user_crop:        preferredCrop,
+    alerts,
+    model_used:       "In-browser rule engine (Arduino offline)",
+    reason,
+    timestamp:        new Date().toISOString(),
+  };
+}
+
 // ── Prediction ────────────────────────────────────────────────────────────────
 async function runPrediction() {
   if (!window.state.connected) {
-    toast("❌ Arduino is offline — cannot predict without real sensor data.", "error");
+    toast("❌ Arduino must be online to run a prediction.", "error");
     return;
   }
   if (!window.state.sensorData) {
-    toast("Sensor data not loaded yet — please wait.", "error");
+    toast("⚠️ No sensor data yet — please wait a moment.", "error");
     return;
   }
 
@@ -351,13 +483,14 @@ async function runPrediction() {
     if (!json.success) throw new Error(json.error);
 
     window.state.prediction = json.prediction;
+    json.prediction.prediction_text = ptext;
     renderPrediction(json.prediction);
     toast(`✅ Predicted: ${json.prediction.recommended_crop}`, "success");
 
   } catch (err) {
     toast(`Prediction error: ${err.message}`, "error");
   } finally {
-    btn.disabled = false;
+    btn.disabled = !window.state.connected;
     btn.innerHTML = "🌾 Predict";
   }
 }
@@ -415,8 +548,12 @@ function renderPrediction(p) {
 
 // ── Report ────────────────────────────────────────────────────────────────────
 async function generateReport() {
+  if (!window.state.prediction) {
+    toast("⚠️ Run a prediction first before downloading the report.", "error");
+    return;
+  }
   if (!window.state.connected) {
-    toast("❌ Arduino is offline — report requires real sensor data.", "error");
+    toast("❌ Arduino must be online to generate a PDF report.", "error");
     return;
   }
 
@@ -469,6 +606,12 @@ function toast(msg, type = "") {
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
   initChart();
+
+  // ── Wire up button click listeners ──────────────────────────────────────
+  const btnPredict = $("#btn-predict");
+  const btnReport  = $("#btn-report");
+  if (btnPredict) btnPredict.addEventListener("click", runPrediction);
+  if (btnReport)  btnReport.addEventListener("click",  generateReport);
 
   // Show offline state immediately before first fetch
   renderSensorCardsOffline();
