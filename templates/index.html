@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AgriSetu — Smart Crop Intelligence Dashboard</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
-  <!-- Chart.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
-  <!-- Dashboard logic -->
   <script src="{{ url_for('static', filename='js/dashboard.js') }}" defer></script>
 </head>
 <body>
@@ -16,7 +14,6 @@
 <header>
   <div class="page-wrapper">
     <div class="site-header">
-
       <div class="logo">
         <div class="logo-icon">🌱</div>
         <div>
@@ -24,7 +21,6 @@
           <div class="logo-sub">IoT · ML · Smart Agriculture</div>
         </div>
       </div>
-
       <div class="header-right">
         <div class="live-badge">
           <span class="pulse-dot"></span>
@@ -32,7 +28,6 @@
         </div>
         <div class="clock" id="clock">00:00:00</div>
       </div>
-
     </div>
   </div>
 </header>
@@ -40,11 +35,18 @@
 <!-- ══════════════════ MAIN ══════════════════ -->
 <main class="page-wrapper" style="padding-top:28px; padding-bottom:40px;">
 
+  <!-- ── Arduino Connection Banner ──────────────────────────── -->
+  <div class="connection-banner offline" id="connection-banner">
+    <span class="banner-dot offline" id="banner-dot"></span>
+    <span id="banner-text">Connecting to Arduino…</span>
+  </div>
+
   <!-- ── Sensor Grid ───────────────────────────────────────── -->
   <p class="section-label">Real-Time Sensor Readings</p>
 
   <div class="sensor-grid">
 
+    <!-- Real sensors on the Arduino -->
     <div class="sensor-card" id="card-sm" data-icon="💧">
       <div class="sensor-label">Soil Moisture</div>
       <div class="sensor-value" id="val-sm">—</div>
@@ -59,34 +61,6 @@
       <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-st" style="width:0%"></div></div>
     </div>
 
-    <div class="sensor-card amber" id="card-at" data-icon="☀">
-      <div class="sensor-label">Air Temp</div>
-      <div class="sensor-value" id="val-at">—</div>
-      <div class="sensor-unit">°C</div>
-      <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-at" style="width:0%"></div></div>
-    </div>
-
-    <div class="sensor-card" id="card-hum" data-icon="🌫">
-      <div class="sensor-label">Humidity</div>
-      <div class="sensor-value" id="val-hum">—</div>
-      <div class="sensor-unit">%</div>
-      <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-hum" style="width:0%"></div></div>
-    </div>
-
-    <div class="sensor-card sky" id="card-rain" data-icon="🌧">
-      <div class="sensor-label">Rainfall</div>
-      <div class="sensor-value" id="val-rain">—</div>
-      <div class="sensor-unit">mm</div>
-      <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-rain" style="width:0%"></div></div>
-    </div>
-
-    <div class="sensor-card amber" id="card-lux" data-icon="🔆">
-      <div class="sensor-label">Light Intensity</div>
-      <div class="sensor-value" id="val-lux">—</div>
-      <div class="sensor-unit">lux</div>
-      <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-lux" style="width:0%"></div></div>
-    </div>
-
     <div class="sensor-card sky" id="card-wl" data-icon="🪣">
       <div class="sensor-label">Water Level</div>
       <div class="sensor-value" id="val-wl">—</div>
@@ -94,16 +68,45 @@
       <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-wl" style="width:0%"></div></div>
     </div>
 
+    <!-- Sensors NOT on this Arduino — labelled clearly -->
+    <div class="sensor-card amber" id="card-at" data-icon="☀">
+      <div class="sensor-label">Air Temp</div>
+      <div class="sensor-value" id="val-at" style="font-size:16px;color:var(--text-dim)">N/A</div>
+      <div class="sensor-unit" style="font-size:10px;">not on device</div>
+      <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-at" style="width:0%"></div></div>
+    </div>
+
+    <div class="sensor-card" id="card-hum" data-icon="🌫">
+      <div class="sensor-label">Humidity</div>
+      <div class="sensor-value" id="val-hum" style="font-size:16px;color:var(--text-dim)">N/A</div>
+      <div class="sensor-unit" style="font-size:10px;">not on device</div>
+      <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-hum" style="width:0%"></div></div>
+    </div>
+
+    <div class="sensor-card sky" id="card-rain" data-icon="🌧">
+      <div class="sensor-label">Rainfall</div>
+      <div class="sensor-value" id="val-rain" style="font-size:16px;color:var(--text-dim)">N/A</div>
+      <div class="sensor-unit" style="font-size:10px;">not on device</div>
+      <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-rain" style="width:0%"></div></div>
+    </div>
+
+    <div class="sensor-card amber" id="card-lux" data-icon="🔆">
+      <div class="sensor-label">Light Intensity</div>
+      <div class="sensor-value" id="val-lux" style="font-size:16px;color:var(--text-dim)">N/A</div>
+      <div class="sensor-unit" style="font-size:10px;">not on device</div>
+      <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-lux" style="width:0%"></div></div>
+    </div>
+
     <div class="sensor-card" id="card-ph" data-icon="⚗">
       <div class="sensor-label">Soil pH</div>
-      <div class="sensor-value" id="val-ph">—</div>
-      <div class="sensor-unit">pH</div>
+      <div class="sensor-value" id="val-ph" style="font-size:16px;color:var(--text-dim)">N/A</div>
+      <div class="sensor-unit" style="font-size:10px;">not on device</div>
       <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-ph" style="width:0%"></div></div>
     </div>
 
   </div>
 
-  <!-- ── Main Panel (form + result) ───────────────────────── -->
+  <!-- ── Main Panel ───────────────────────────────────────── -->
   <p class="section-label">Crop Prediction Engine</p>
 
   <div class="main-panel">
@@ -119,14 +122,12 @@
         </p>
       </div>
 
-      <!-- Custom prediction note -->
       <div class="form-group">
         <label class="form-label" for="pred-text">Your Prediction / Note</label>
         <textarea class="form-textarea" id="pred-text"
           placeholder="e.g. Expecting high rainfall next week, low moisture possible…"></textarea>
       </div>
 
-      <!-- Crop selector -->
       <div class="form-group">
         <label class="form-label" for="crop-select">Preferred Crop (optional)</label>
         <select class="form-select" id="crop-select">
@@ -144,26 +145,38 @@
         </select>
       </div>
 
-      <!-- Sensor summary -->
+      <!-- Sensor summary — reads from window.state directly via JS updates -->
       <div style="background:var(--bg-3);border:1px solid var(--border);border-radius:var(--radius);
                   padding:14px 16px;margin-bottom:20px;font-family:var(--font-mono);font-size:11px;
                   color:var(--text-dim);line-height:2;">
         <span style="color:var(--accent);font-weight:600;">Current Sensor Input</span><br>
         Moisture: <span id="sum-sm" style="color:#fff">—</span> % &nbsp;|&nbsp;
         Soil Temp: <span id="sum-st" style="color:#fff">—</span> °C &nbsp;|&nbsp;
-        Humidity: <span id="sum-hum" style="color:#fff">—</span> %
+        Humidity: <span id="sum-hum" style="color:#fff">N/A</span>
       </div>
 
-      <!-- Buttons -->
       <div class="btn-row">
-        <button class="btn btn-primary" id="btn-predict">🌾 Predict</button>
-        <button class="btn btn-secondary" id="btn-report">📄 Download Report</button>
+        <!-- Buttons start disabled — enabled when Arduino connects -->
+        <button class="btn btn-primary" id="btn-predict" disabled
+                title="Arduino must be online to predict">
+          🌾 Predict
+        </button>
+        <button class="btn btn-secondary" id="btn-report" disabled
+                title="Arduino must be online to generate report">
+          📄 Download Report
+        </button>
       </div>
     </div>
 
-    <!-- Result card -->
+    <!-- Result card — populated by dashboard.js -->
     <div class="glass-card result-panel" id="result-panel">
-      <!-- Populated by dashboard.js -->
+      <div class="no-result">
+        <span class="no-result-icon">🌱</span>
+        Waiting for Arduino connection…<br>
+        <span style="font-size:10px;margin-top:8px;display:block;">
+          Once online, fill the form and click <b>Predict</b>
+        </span>
+      </div>
     </div>
 
   </div>
@@ -192,14 +205,14 @@
         <div class="mini-stat">
           <div class="mini-stat-label">AIR TEMPERATURE</div>
           <div class="mini-stat-value" id="mini-at-val">
-            — <span class="mini-stat-unit">°C</span>
+            N/A <span class="mini-stat-unit">°C</span>
           </div>
         </div>
 
         <div class="mini-stat">
           <div class="mini-stat-label">HUMIDITY</div>
           <div class="mini-stat-value" id="mini-hum-val">
-            — <span class="mini-stat-unit">%</span>
+            N/A <span class="mini-stat-unit">%</span>
           </div>
         </div>
 
@@ -221,37 +234,13 @@
   <div class="page-wrapper">
     <div class="site-footer">
       AgriSetu Smart Agriculture IoT Dashboard &nbsp;·&nbsp;
-      ML-powered crop intelligence &nbsp;·&nbsp;
-      Data refreshes every 5 seconds
+      Predictions require live Arduino data &nbsp;·&nbsp;
+      Polls every 5 seconds
     </div>
   </div>
 </footer>
 
-<!-- ══════════════════ TOAST CONTAINER ══════════════════ -->
 <div class="toast-container" id="toast-container"></div>
-
-<!-- ══════════════════ INLINE SENSOR SUMMARY UPDATE ══════════════════ -->
-<script>
-  // Patch dashboard.js to also update summary row + quick stats + source
-  const _origRender = window.renderSensorCards;
-  document.addEventListener('DOMContentLoaded', () => {
-    // Intercept fetchSensorData results via MutationObserver alternative:
-    // We simply override via polling on state
-    setInterval(() => {
-      const d = window.state?.sensorData;
-      if (!d) return;
-      const s = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
-      s('sum-sm',  d.soil_moisture?.toFixed(1));
-      s('sum-st',  d.soil_temperature?.toFixed(1));
-      s('sum-hum', d.humidity?.toFixed(1));
-      s('mini-sm-val',  `${d.soil_moisture?.toFixed(1)}<span class="mini-stat-unit"> %</span>`);
-      s('mini-at-val',  `${d.air_temperature?.toFixed(1)}<span class="mini-stat-unit"> °C</span>`);
-      s('mini-hum-val', `${d.humidity?.toFixed(1)}<span class="mini-stat-unit"> %</span>`);
-      const src = document.getElementById('data-source');
-      if(src) src.textContent = d.source === 'thingesp' ? '📡 ThingESP Live' : '🔄 Simulated';
-    }, 1000);
-  });
-</script>
 
 </body>
 </html>
