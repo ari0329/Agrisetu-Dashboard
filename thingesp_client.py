@@ -12,7 +12,7 @@ import math
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 
-CACHE_TTL_SECONDS = 60   # data older than 60 s = device offline
+CACHE_TTL_SECONDS = 180   # data older than 60 s = device offline
 
 
 def _simulate_absent_sensors(soil_temp: float) -> Dict[str, float]:
