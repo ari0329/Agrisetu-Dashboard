@@ -39,6 +39,8 @@ class Config:
     # ── Directories ───────────────────────────────────────────────────────────
     REPORTS_DIR = Path(__file__).parent / "reports"
     LOGS_DIR    = Path(__file__).parent / "logs"
+    DATA_DIR    = Path(__file__).parent / "data"
+    UPLOADS_DIR = Path(__file__).parent / "uploads"
 
     # ── Logging ───────────────────────────────────────────────────────────────
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -47,8 +49,10 @@ class Config:
     def validate(cls):
         cls.REPORTS_DIR.mkdir(exist_ok=True)
         cls.LOGS_DIR.mkdir(exist_ok=True)
+        cls.DATA_DIR.mkdir(exist_ok=True)
+        cls.UPLOADS_DIR.mkdir(exist_ok=True)
         if not cls.THINGESP_TOKEN:
-            print("⚠️  THINGESP_TOKEN not set — sensor data will be simulated.")
+            print("⚠️  THINGESP_TOKEN not set — Arduino direct ingest still works via /api/arduino-data.")
         return True
 
 

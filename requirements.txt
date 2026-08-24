@@ -16,6 +16,10 @@ openpyxl==3.1.2
 # ── PDF Generation ─────────────────────────────────────────────────────────────
 reportlab==4.0.8
 
+# ── Edge vision (leaf disease / pest / nutrient color analysis) ────────────────
+# Use a recent Pillow with wheels for your Python (3.11–3.14).
+Pillow>=11.0.0
+
 # ── Environment ────────────────────────────────────────────────────────────────
 python-dotenv==1.0.0
 

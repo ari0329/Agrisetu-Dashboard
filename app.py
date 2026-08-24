@@ -1,9 +1,12 @@
 """
-AgriSetu IoT Prediction Dashboard — Flask Backend
+AgriSetu Smart Farming Assistant — Flask Backend
 - /api/sensor-data   : returns real Arduino data or 503 if offline
 - /api/status        : Arduino connection status
-- /api/predict       : blocked with 503 if Arduino is offline
-- /api/report        : blocked with 503 if Arduino is offline
+- /api/predict       : crop ML + farmer advisories
+- /api/advisory      : irrigation, env risk, nutrient advisories (edge)
+- /api/vision        : leaf image disease / pest / nutrient analysis
+- /api/analytics     : field history + yield-risk trends
+- /api/report        : PDF report
 """
 import os
 import logging
@@ -14,6 +17,9 @@ from flask import Flask, request, jsonify, send_file, render_template
 
 from config import Config
 from thingesp_client import get_sensor_data, get_connection_status
+from advisory import full_advisory_bundle
+from vision_analyzer import analyze_leaf_image, analyze_demo_profile
+from farm_store import append_snapshot, get_analytics_summary, list_fields
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 Config.LOGS_DIR.mkdir(exist_ok=True)
@@ -118,23 +124,6 @@ def rule_predict(sensor_data, preferred_crop):
             "confidence": compute_confidence(sensor_data, rec)}
 
 
-def build_alerts(sensor_data):
-    alerts = []
-    m  = sensor_data.get("soil_moisture",    50)
-    t  = sensor_data.get("air_temperature")
-    wl = sensor_data.get("water_level",       50)
-
-    if m < 30:
-        alerts.append({"type": "warning", "msg": "Low soil moisture — irrigation recommended"})
-    elif m > 82:
-        alerts.append({"type": "info",    "msg": "High moisture — check drainage"})
-    if t is not None and t > 36:
-        alerts.append({"type": "danger",  "msg": "Heat stress risk — apply shade/cooling"})
-    if wl < 25:
-        alerts.append({"type": "warning", "msg": "Water reservoir critically low"})
-    return alerts
-
-
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -223,23 +212,137 @@ def api_predict():
             rec, months, conf = r["crop"], r["months"], r["confidence"]
             engine = "Rule-based (ML models not loaded)"
 
+        advisory = full_advisory_bundle(sensor_data)
+        prediction = {
+            "recommended_crop": rec,
+            "growth_months":    months,
+            "confidence":       conf,
+            "confidence_pct":   int(conf * 100),
+            "prediction_text":  pred_text,
+            "user_crop":        preferred,
+            "alerts":           advisory["alerts"],
+            "advisory":         advisory,
+            "model_used":       engine,
+            "timestamp":        datetime.now().isoformat(),
+        }
+
+        field_id = (body.get("field_id") or "field-1").strip() or "field-1"
+        try:
+            append_snapshot(sensor_data, advisory=advisory, prediction=prediction,
+                            field_id=field_id)
+        except Exception as store_err:
+            logger.warning(f"Analytics store skip: {store_err}")
+
+        return jsonify({"success": True, "prediction": prediction})
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/advisory", methods=["GET", "POST"])
+def api_advisory():
+    """
+    Edge-style farmer advisory: irrigation, drought/flood/heat, nutrients.
+    Uses live Arduino data when available; POST may supply sensor_data for demos.
+    """
+    body = request.get_json(silent=True) or {}
+    sensor_data = body.get("sensor_data") or get_sensor_data()
+    if sensor_data is None:
+        return _offline_error()
+
+    vision = body.get("vision")
+    field_id = (body.get("field_id") or request.args.get("field_id") or "field-1").strip()
+    bundle = full_advisory_bundle(sensor_data, vision=vision)
+
+    try:
+        append_snapshot(sensor_data, advisory=bundle, vision=vision, field_id=field_id)
+    except Exception as store_err:
+        logger.warning(f"Analytics store skip: {store_err}")
+
+    return jsonify({
+        "success": True,
+        "field_id": field_id,
+        "edge_processed": True,
+        "sensor_source": sensor_data.get("source", "unknown"),
+        **bundle,
+    })
+
+
+@app.route("/api/vision", methods=["POST"])
+def api_vision():
+    """
+    Crop health / pest / nutrient analysis from a leaf image (multipart)
+    or demo_profile JSON for demos without a camera.
+    Runs locally on the server (edge-friendly, no cloud CV).
+    """
+    try:
+        crop_hint = ""
+        field_id = "field-1"
+        result = None
+
+        if request.content_type and "multipart/form-data" in request.content_type:
+            crop_hint = (request.form.get("crop") or "").strip()
+            field_id = (request.form.get("field_id") or "field-1").strip() or "field-1"
+            file = request.files.get("image") or request.files.get("file")
+            if not file:
+                return jsonify({"success": False, "error": "No image file uploaded"}), 400
+            result = analyze_leaf_image(file.read(), crop_hint=crop_hint)
+        else:
+            body = request.get_json(silent=True) or {}
+            crop_hint = (body.get("crop") or "").strip()
+            field_id = (body.get("field_id") or "field-1").strip() or "field-1"
+            demo = body.get("demo_profile")
+            if demo:
+                result = analyze_demo_profile(demo)
+            elif body.get("image_base64"):
+                import base64
+                raw = body["image_base64"]
+                if "," in raw:
+                    raw = raw.split(",", 1)[1]
+                result = analyze_leaf_image(base64.b64decode(raw), crop_hint=crop_hint)
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "Provide multipart image, image_base64, or demo_profile",
+                }), 400
+
+        if not result.get("success"):
+            return jsonify(result), 400
+
+        sensor_data = get_sensor_data()
+        advisory = None
+        if sensor_data:
+            advisory = full_advisory_bundle(sensor_data, vision=result)
+            try:
+                append_snapshot(sensor_data, advisory=advisory, vision=result,
+                                field_id=field_id)
+            except Exception as store_err:
+                logger.warning(f"Analytics store skip: {store_err}")
+
         return jsonify({
             "success": True,
-            "prediction": {
-                "recommended_crop": rec,
-                "growth_months":    months,
-                "confidence":       conf,
-                "confidence_pct":   int(conf * 100),
-                "prediction_text":  pred_text,
-                "user_crop":        preferred,
-                "alerts":           build_alerts(sensor_data),
-                "model_used":       engine,
-                "timestamp":        datetime.now().isoformat(),
-            },
+            "field_id": field_id,
+            "vision": result,
+            "advisory": advisory,
         })
     except Exception as e:
         logger.error(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/analytics")
+def api_analytics():
+    """Farm analytics: historical trends, yield-risk, disease/pest event counts."""
+    field_id = (request.args.get("field_id") or "field-1").strip() or "field-1"
+    limit = min(int(request.args.get("limit", 50)), 200)
+    summary = get_analytics_summary(field_id)
+    from farm_store import get_history
+    return jsonify({
+        "success": True,
+        "summary": summary,
+        "history": get_history(field_id, limit=limit),
+        "fields": list_fields(),
+    })
 
 
 @app.route("/api/report", methods=["POST"])
@@ -289,6 +392,12 @@ def health():
         "status":         "healthy",
         "models_loaded":  models_loaded,
         "arduino":        status,
+        "modules": {
+            "advisory": True,
+            "vision": True,
+            "analytics": True,
+        },
+        "fields": list_fields(),
         "timestamp":      datetime.now().isoformat(),
     })
 

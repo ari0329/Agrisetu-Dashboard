@@ -12,11 +12,15 @@
 window.state = {
   sensorData:    null,
   prediction:    null,
+  advisory:      null,
+  vision:        null,
   connected:     false,
+  fieldId:       "field-1",
   historyMoist:  [],
   historyTemp:   [],
   historyLabels: [],
   chart:         null,
+  analyticsChart: null,
   maxHistory:    20,
 };
 
@@ -82,29 +86,291 @@ function updateButtonStates() {
   btnReport.title     = canPredict ? "" : "Arduino must be online to generate report";
 }
 
-// ── Local sensor simulation (used when backend/Arduino both offline) ──────────
-function generateSimulatedSensors() {
-  const hour  = new Date().getHours();
-  const t     = 25 + 4 * Math.sin(Math.PI * (hour - 6) / 12) + (Math.random() - 0.5) * 2;
-  const m     = 45 + (Math.random() - 0.5) * 20;
-  const wl    = 60 + (Math.random() - 0.5) * 30;
-  const hum   = Math.max(35, Math.min(98, 80 - (t - 20) * 1.2 + (Math.random()-0.5)*10));
-  const light = hour >= 6 && hour <= 18
-    ? Math.round(Math.sin(Math.PI*(hour-6)/12) * 85 + Math.random()*15) : 0;
+function getFieldId() {
+  const el = $("#field-id");
+  return (el && el.value) || window.state.fieldId || "field-1";
+}
 
-  return {
-    soil_moisture:    Math.round(m * 10) / 10,
-    soil_temperature: Math.round(t * 10) / 10,
-    water_level:      Math.round(wl),
-    air_temperature:  Math.round((t + 1.5) * 10) / 10,
-    humidity:         Math.round(hum * 10) / 10,
-    rainfall:         0,
-    light_intensity:  light,
-    ph:               Math.round((5.8 + Math.random() * 1.4) * 100) / 100,
-    simulated:        true,
-    source:           "browser_simulation",
-    timestamp:        new Date().toISOString(),
-  };
+// ── Farmer advisory + environmental risk ──────────────────────────────────────
+async function fetchAdvisory() {
+  if (!window.state.connected || !window.state.sensorData) {
+    renderAdvisoryOffline();
+    return;
+  }
+  try {
+    const res = await fetch("/api/advisory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sensor_data: window.state.sensorData,
+        field_id: getFieldId(),
+        vision: window.state.vision || undefined,
+      }),
+    });
+    const json = await res.json();
+    if (res.status === 503) {
+      renderAdvisoryOffline();
+      return;
+    }
+    if (!json.success) throw new Error(json.error);
+    window.state.advisory = json;
+    renderAdvisory(json);
+    fetchAnalytics();
+  } catch (err) {
+    console.warn("Advisory error:", err);
+  }
+}
+
+function renderAdvisoryOffline() {
+  const list = $("#advisory-list");
+  if (list) {
+    list.innerHTML = `<div class="no-result" style="padding:16px;">
+      Arduino offline — advisory unavailable. Connect sensors for live advice.
+    </div>`;
+  }
+  const msg = $("#irrigation-msg");
+  if (msg) msg.textContent = "Waiting for live soil moisture…";
+  const meta = $("#irrigation-meta");
+  if (meta) meta.textContent = "";
+  const score = $("#risk-score");
+  if (score) score.textContent = "—";
+  const level = $("#risk-level");
+  if (level) level.textContent = "Yield risk";
+  const bars = $("#risk-bars");
+  if (bars) bars.innerHTML = "";
+}
+
+function renderAdvisory(bundle) {
+  const list = $("#advisory-list");
+  if (list) {
+    const items = bundle.advisories || [];
+    list.innerHTML = items.map(a =>
+      `<div class="alert-item ${a.severity}">
+        <span>${{warning:"⚠",info:"ℹ",danger:"🔴",success:"✅"}[a.severity]||"•"}</span>
+        <span><b>${a.title}</b> — ${a.detail}</span>
+      </div>`
+    ).join("") || `<div class="alert-item success">✅ Conditions stable</div>`;
+  }
+
+  const irr = bundle.irrigation || {};
+  const msg = $("#irrigation-msg");
+  if (msg) msg.textContent = irr.message || "—";
+  const meta = $("#irrigation-meta");
+  if (meta) {
+    meta.textContent = irr.action
+      ? `Action: ${irr.action.replace(/_/g, " ")} · Urgency: ${irr.urgency} · Next check: ${irr.next_check_hours}h · ~${irr.suggested_litres_per_m2 || 0} L/m²`
+      : "";
+  }
+  const box = $("#irrigation-box");
+  if (box) {
+    box.className = "irrigation-box " + (irr.urgency || "");
+  }
+
+  const risks = bundle.environmental_risks || {};
+  const scoreEl = $("#risk-score");
+  if (scoreEl) scoreEl.textContent = `${risks.yield_risk_pct ?? "—"}%`;
+  const levelEl = $("#risk-level");
+  if (levelEl) levelEl.textContent = `Yield risk · ${(risks.overall_level || "").toUpperCase()}`;
+
+  const bars = $("#risk-bars");
+  if (bars && risks.risks) {
+    bars.innerHTML = risks.risks.map(r => `
+      <div class="risk-row">
+        <div class="risk-row-top">
+          <span>${r.label}</span>
+          <span class="risk-pct level-${r.level}">${r.score}</span>
+        </div>
+        <div class="risk-track"><div class="risk-fill level-${r.level}" style="width:${r.score}%"></div></div>
+      </div>`).join("");
+  }
+}
+
+// ── Edge vision (disease / pest / nutrient) ───────────────────────────────────
+async function runVisionScan(demoProfile = null) {
+  const btn = $("#btn-vision");
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Scanning…';
+  }
+
+  try {
+    let res;
+    if (demoProfile) {
+      res = await fetch("/api/vision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          demo_profile: demoProfile,
+          field_id: getFieldId(),
+          crop: $("#crop-select")?.value || "",
+        }),
+      });
+    } else {
+      const fileInput = $("#leaf-image");
+      const file = fileInput?.files?.[0];
+      if (!file) {
+        toast("Select a leaf image first, or use a Demo button.", "warning");
+        return;
+      }
+      const preview = $("#vision-preview");
+      const wrap = $("#vision-preview-wrap");
+      if (preview && wrap) {
+        preview.src = URL.createObjectURL(file);
+        wrap.classList.remove("hidden");
+      }
+      const fd = new FormData();
+      fd.append("image", file);
+      fd.append("field_id", getFieldId());
+      fd.append("crop", $("#crop-select")?.value || "");
+      res = await fetch("/api/vision", { method: "POST", body: fd });
+    }
+
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || "Vision scan failed");
+
+    window.state.vision = json.vision;
+    if (json.advisory) {
+      window.state.advisory = json.advisory;
+      renderAdvisory(json.advisory);
+    }
+    renderVision(json.vision);
+    fetchAnalytics();
+    toast("Leaf scan complete (edge processed)", "success");
+  } catch (err) {
+    toast(`Vision error: ${err.message}`, "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = "Scan Leaf";
+    }
+  }
+}
+
+function renderVision(v) {
+  const panel = $("#vision-panel");
+  if (!panel || !v) return;
+
+  const flag = (ok, label, conf) =>
+    `<div class="vision-flag ${ok ? "on" : "off"}">
+      <span>${ok ? "⚠" : "✓"} ${label}</span>
+      <span class="vision-conf">${Math.round((conf || 0) * 100)}%</span>
+    </div>`;
+
+  panel.innerHTML = `
+    <div class="vision-health">
+      <div class="vision-health-score">${v.field_health_score ?? "—"}</div>
+      <div>
+        <div class="gauge-crop" style="font-size:20px;">Field health</div>
+        <div class="gauge-months">${v.growth_stage || ""}</div>
+        <div class="gauge-model">via ${v.model || "edge vision"}</div>
+      </div>
+    </div>
+    <div class="vision-flags">
+      ${flag(v.disease_detected, "Disease", v.disease_confidence)}
+      ${flag(v.pest_detected, "Pest", v.pest_confidence)}
+      ${flag(v.nutrient_flag, "Nutrient", v.nutrient_confidence)}
+    </div>
+    <div class="alerts-list">
+      <div class="alert-item ${v.disease_detected ? "danger" : "success"}">
+        <span>${v.disease_detected ? "🔴" : "✅"}</span>
+        <span>${v.disease_summary || "—"}</span>
+      </div>
+      <div class="alert-item ${v.pest_detected ? "warning" : "success"}">
+        <span>${v.pest_detected ? "⚠" : "✅"}</span>
+        <span>${v.pest_summary || "—"}</span>
+      </div>
+      <div class="alert-item ${v.nutrient_flag ? "warning" : "info"}">
+        <span>${v.nutrient_flag ? "⚠" : "ℹ"}</span>
+        <span>${v.nutrient_summary || "—"}</span>
+      </div>
+    </div>
+    <ul class="rec-list">
+      ${(v.recommendations || []).map(r => `<li>${r}</li>`).join("")}
+    </ul>`;
+}
+
+// ── Farm analytics ────────────────────────────────────────────────────────────
+async function fetchAnalytics() {
+  try {
+    const res = await fetch(`/api/analytics?field_id=${encodeURIComponent(getFieldId())}&limit=50`);
+    const json = await res.json();
+    if (!json.success) return;
+    renderAnalytics(json.summary);
+  } catch (err) {
+    console.warn("Analytics error:", err);
+  }
+}
+
+function renderAnalytics(s) {
+  if (!s) return;
+  const set = (id, html) => { const el = $(id); if (el) el.innerHTML = html; };
+  set("#an-moist", s.avg_moisture != null
+    ? `${s.avg_moisture}<span class="mini-stat-unit"> %</span>` : `— <span class="mini-stat-unit">%</span>`);
+  set("#an-risk", s.avg_yield_risk != null
+    ? `${s.avg_yield_risk}<span class="mini-stat-unit"> %</span>` : `— <span class="mini-stat-unit">%</span>`);
+  set("#an-disease", String(s.disease_events ?? "—"));
+  set("#an-pest", String(s.pest_events ?? "—"));
+  set("#an-irrigate", String(s.irrigation_irrigate_now_count ?? "—"));
+
+  const trend = s.trend || [];
+  if (!window.state.analyticsChart) return;
+  window.state.analyticsChart.data.labels = trend.map(t => t.t);
+  window.state.analyticsChart.data.datasets[0].data = trend.map(t => t.moisture);
+  window.state.analyticsChart.data.datasets[1].data = trend.map(t => t.yield_risk);
+  window.state.analyticsChart.update("quiet");
+}
+
+function initAnalyticsChart() {
+  const ctx = $("#analyticsChart");
+  if (!ctx) return;
+  window.state.analyticsChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: "Moisture (%)",
+          data: [],
+          borderColor: "#A8FF3E",
+          backgroundColor: "rgba(168,255,62,0.08)",
+          borderWidth: 2, pointRadius: 2, tension: 0.4, fill: true, yAxisID: "y",
+        },
+        {
+          label: "Yield risk (%)",
+          data: [],
+          borderColor: "#FF6B6B",
+          backgroundColor: "rgba(255,107,107,0.06)",
+          borderWidth: 2, pointRadius: 2, tension: 0.4, fill: true, yAxisID: "y1",
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      animation: { duration: 350 },
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: {
+          labels: { color: "#C8DEC9", font: { family: "JetBrains Mono", size: 11 } },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: "#4A6350", font: { family: "JetBrains Mono", size: 10 } },
+          grid:  { color: "rgba(168,255,62,.06)" },
+        },
+        y: {
+          position: "left", min: 0, max: 100,
+          ticks: { color: "#A8FF3E", font: { family: "JetBrains Mono", size: 10 } },
+          grid:  { color: "rgba(168,255,62,.08)" },
+        },
+        y1: {
+          position: "right", min: 0, max: 100,
+          ticks: { color: "#FF6B6B", font: { family: "JetBrains Mono", size: 10 } },
+          grid:  { display: false },
+        },
+      },
+    },
+  });
 }
 
 // ── Sensor data polling ───────────────────────────────────────────────────────
@@ -135,6 +401,11 @@ async function fetchSensorData() {
     updateSensorSummary();
     updateQuickStats();
     updateButtonStates();
+
+    // Refresh farmer advisory when sensors update
+    if (wasOffline || !window.state.advisory) {
+      fetchAdvisory();
+    }
 
     // If Arduino just came online, clear the "waiting" placeholder in result panel
     if (wasOffline) {
@@ -472,6 +743,7 @@ async function runPrediction() {
       body: JSON.stringify({
         crop, prediction_text: ptext,
         sensor_data: window.state.sensorData,
+        field_id: getFieldId(),
       }),
     });
     const json = await res.json();
@@ -485,6 +757,11 @@ async function runPrediction() {
     window.state.prediction = json.prediction;
     json.prediction.prediction_text = ptext;
     renderPrediction(json.prediction);
+    if (json.prediction.advisory) {
+      window.state.advisory = json.prediction.advisory;
+      renderAdvisory(json.prediction.advisory);
+    }
+    fetchAnalytics();
     toast(`✅ Predicted: ${json.prediction.recommended_crop}`, "success");
 
   } catch (err) {
@@ -606,6 +883,7 @@ function toast(msg, type = "") {
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
   initChart();
+  initAnalyticsChart();
 
   // ── Wire up button click listeners ──────────────────────────────────────
   const btnPredict = $("#btn-predict");
@@ -613,9 +891,32 @@ async function init() {
   if (btnPredict) btnPredict.addEventListener("click", runPrediction);
   if (btnReport)  btnReport.addEventListener("click",  generateReport);
 
+  const btnAdvisory = $("#btn-advisory");
+  if (btnAdvisory) btnAdvisory.addEventListener("click", fetchAdvisory);
+
+  const btnVision = $("#btn-vision");
+  if (btnVision) btnVision.addEventListener("click", () => runVisionScan());
+
+  const demoDisease = $("#btn-demo-disease");
+  const demoPest = $("#btn-demo-pest");
+  const demoNutrient = $("#btn-demo-nutrient");
+  if (demoDisease) demoDisease.addEventListener("click", () => runVisionScan("disease"));
+  if (demoPest) demoPest.addEventListener("click", () => runVisionScan("pest"));
+  if (demoNutrient) demoNutrient.addEventListener("click", () => runVisionScan("nutrient"));
+
+  const fieldSel = $("#field-id");
+  if (fieldSel) {
+    fieldSel.addEventListener("change", () => {
+      window.state.fieldId = getFieldId();
+      fetchAdvisory();
+      fetchAnalytics();
+    });
+  }
+
   // Show offline state immediately before first fetch
   renderSensorCardsOffline();
   updateButtonStates();
+  fetchAnalytics();
 
   // First fetches
   await fetchConnectionStatus();
@@ -624,6 +925,8 @@ async function init() {
   // Polling intervals
   setInterval(fetchConnectionStatus, 5000);   // connection banner
   setInterval(fetchSensorData,       5000);   // sensor cards
+  setInterval(fetchAdvisory,        30000);   // advisory refresh
+  setInterval(fetchAnalytics,       60000);   // analytics refresh
 }
 
 document.addEventListener("DOMContentLoaded", init);

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AgriSetu — Smart Crop Intelligence Dashboard</title>
+  <title>AgriSetu — Smart Farming Assistant</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
   <script src="{{ url_for('static', filename='js/dashboard.js') }}" defer></script>
@@ -18,10 +18,18 @@
         <div class="logo-icon">🌱</div>
         <div>
           AGRISETU
-          <div class="logo-sub">IoT · ML · Smart Agriculture</div>
+          <div class="logo-sub">Edge AI · Crop Health · Smart Irrigation</div>
         </div>
       </div>
       <div class="header-right">
+        <div class="field-select-wrap">
+          <label class="form-label" for="field-id" style="margin:0;">Field</label>
+          <select class="form-select field-select" id="field-id">
+            <option value="field-1">Field 1</option>
+            <option value="field-2">Field 2</option>
+            <option value="field-3">Field 3</option>
+          </select>
+        </div>
         <div class="live-badge">
           <span class="pulse-dot"></span>
           LIVE SENSORS
@@ -104,6 +112,76 @@
       <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-ph" style="width:0%"></div></div>
     </div>
 
+  </div>
+
+  <!-- ── Farmer Advisory + Environmental Risk ──────────────── -->
+  <p class="section-label">Farmer Advisory System</p>
+  <div class="assist-grid">
+    <div class="glass-card">
+      <div class="card-head">
+        <h2>Actionable Alerts</h2>
+        <button class="btn btn-outline btn-sm" id="btn-advisory" type="button">Refresh Advice</button>
+      </div>
+      <div id="advisory-list" class="alerts-list">
+        <div class="no-result" style="padding:20px;">
+          Connect Arduino or click Refresh to load irrigation, heat, flood, and crop alerts.
+        </div>
+      </div>
+      <div class="irrigation-box" id="irrigation-box">
+        <div class="mini-stat-label">SMART IRRIGATION</div>
+        <div id="irrigation-msg" class="irrigation-msg">Waiting for sensor data…</div>
+        <div class="irrigation-meta" id="irrigation-meta"></div>
+      </div>
+    </div>
+
+    <div class="glass-card">
+      <div class="card-head">
+        <h2>Environmental Risk Monitor</h2>
+        <span class="badge-edge">EDGE</span>
+      </div>
+      <div class="risk-overall" id="risk-overall">
+        <span class="risk-score" id="risk-score">—</span>
+        <span class="risk-level" id="risk-level">Yield risk</span>
+      </div>
+      <div class="risk-bars" id="risk-bars"></div>
+    </div>
+  </div>
+
+  <!-- ── Crop Health Vision ─────────────────────────────────── -->
+  <p class="section-label">Crop Health · Pest · Nutrient (Edge Vision)</p>
+  <div class="assist-grid">
+    <div class="glass-card">
+      <div class="card-head">
+        <h2>Leaf / Plant Image Scan</h2>
+        <span class="badge-edge">ON-DEVICE</span>
+      </div>
+      <p style="font-size:13px;color:var(--text-dim);margin-bottom:14px;">
+        Upload a leaf photo to detect disease spots, pest damage, and nutrient deficiency signs — processed locally, no cloud CV required.
+      </p>
+      <div class="form-group">
+        <label class="form-label" for="leaf-image">Leaf image</label>
+        <input class="form-input" type="file" id="leaf-image" accept="image/*" capture="environment" />
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-vision" type="button">Scan Leaf</button>
+        <button class="btn btn-outline" id="btn-demo-disease" type="button">Demo: Disease</button>
+        <button class="btn btn-outline" id="btn-demo-pest" type="button">Demo: Pest</button>
+        <button class="btn btn-outline" id="btn-demo-nutrient" type="button">Demo: Nutrient</button>
+      </div>
+      <div id="vision-preview-wrap" class="vision-preview-wrap hidden">
+        <img id="vision-preview" alt="Leaf preview" />
+      </div>
+    </div>
+
+    <div class="glass-card result-panel" id="vision-panel">
+      <div class="no-result">
+        <span class="no-result-icon">🍃</span>
+        Upload a leaf image or run a demo scan.<br>
+        <span style="font-size:10px;margin-top:8px;display:block;">
+          Results include disease, pest, and nutrient flags with farmer recommendations.
+        </span>
+      </div>
+    </div>
   </div>
 
   <!-- ── Main Panel ───────────────────────────────────────── -->
@@ -227,14 +305,48 @@
 
   </div>
 
+  <!-- ── Farm Analytics ─────────────────────────────────────── -->
+  <p class="section-label">Farm Analytics Dashboard</p>
+  <div class="chart-section analytics-section">
+    <div class="chart-card">
+      <div class="chart-title">Yield Risk &amp; Moisture Trend</div>
+      <canvas id="analyticsChart" height="220"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title" style="margin-bottom:20px;">Field Performance</div>
+      <div class="mini-stats" id="analytics-stats">
+        <div class="mini-stat">
+          <div class="mini-stat-label">AVG MOISTURE</div>
+          <div class="mini-stat-value" id="an-moist">— <span class="mini-stat-unit">%</span></div>
+        </div>
+        <div class="mini-stat">
+          <div class="mini-stat-label">AVG YIELD RISK</div>
+          <div class="mini-stat-value" id="an-risk">— <span class="mini-stat-unit">%</span></div>
+        </div>
+        <div class="mini-stat">
+          <div class="mini-stat-label">DISEASE EVENTS</div>
+          <div class="mini-stat-value" id="an-disease">—</div>
+        </div>
+        <div class="mini-stat">
+          <div class="mini-stat-label">PEST EVENTS</div>
+          <div class="mini-stat-value" id="an-pest">—</div>
+        </div>
+        <div class="mini-stat" style="background:var(--accent-dim);border-color:var(--border-glow);">
+          <div class="mini-stat-label" style="color:var(--accent);">IRRIGATE-NOW COUNT</div>
+          <div class="mini-stat-value" id="an-irrigate" style="color:var(--accent);">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <!-- ══════════════════ FOOTER ══════════════════ -->
 <footer>
   <div class="page-wrapper">
     <div class="site-footer">
-      AgriSetu Smart Agriculture IoT Dashboard &nbsp;·&nbsp;
-      Predictions require live Arduino data &nbsp;·&nbsp;
+      AgriSetu Smart Farming Assistant &nbsp;·&nbsp;
+      Edge AI crop health · irrigation · risk alerts &nbsp;·&nbsp;
       Polls every 5 seconds
     </div>
   </div>

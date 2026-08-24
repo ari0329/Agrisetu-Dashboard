@@ -11,6 +11,8 @@ models/*.pkl
 # Generated files
 reports/*.pdf
 logs/*.log
+data/farm_history.json
+uploads/*
 
 # OS
 .DS_Store
