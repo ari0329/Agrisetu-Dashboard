@@ -26,20 +26,52 @@
         <div class="field-select-wrap">
           <label class="form-label" for="field-id" style="margin:0;">Field</label>
           <select class="form-select field-select" id="field-id">
-            <option value="field-1">Field 1</option>
-            <option value="field-2">Field 2</option>
-            <option value="field-3">Field 3</option>
+            <option value="">Loading fields…</option>
           </select>
+          <button class="btn btn-outline btn-sm" id="btn-add-field" type="button">+ Field</button>
         </div>
         <div class="live-badge">
           <span class="pulse-dot"></span>
           LIVE SENSORS
         </div>
         <div class="clock" id="clock">00:00:00</div>
+        <div class="user-menu">
+          <span>{{ user.name }}</span>
+          <form method="post" action="{{ url_for('logout') }}">
+            <button class="btn btn-outline btn-sm" type="submit">Log out</button>
+          </form>
+        </div>
       </div>
     </div>
   </div>
 </header>
+
+<dialog class="field-dialog" id="field-dialog">
+  <form class="glass-card field-dialog-card" id="field-form">
+    <div class="card-head">
+      <h2>Add a field</h2>
+      <button class="dialog-close" id="btn-close-field" type="button" aria-label="Close">×</button>
+    </div>
+    <p class="dialog-copy">
+      Enter the exact Device ID configured in the ESP8266 sketch. It is used once
+      to securely pair incoming readings with this field.
+    </p>
+    <div class="form-group">
+      <label class="form-label" for="field-name">Field name</label>
+      <input class="form-input" id="field-name" maxlength="80"
+             placeholder="e.g. North Field" required />
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="field-device-id">Device ID / secret code</label>
+      <input class="form-input" id="field-device-id" type="password"
+             minlength="6" maxlength="128" autocomplete="off" required />
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btn-save-field" type="submit">Pair field</button>
+      <button class="btn btn-outline" id="btn-cancel-field" type="button">Cancel</button>
+    </div>
+  </form>
+</dialog>
 
 <!-- ══════════════════ MAIN ══════════════════ -->
 <main class="page-wrapper" style="padding-top:28px; padding-bottom:40px;">

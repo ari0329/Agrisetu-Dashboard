@@ -16,6 +16,17 @@ class Config:
     PORT       = int(os.getenv("PORT", 10000))
     BASE_URL   = os.getenv("BASE_URL", "https://agrisetu-21.onrender.com")
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-in-production")
+    SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "true").lower() == "true"
+
+    # ── Shared MongoDB identity + farm data ───────────────────────────────────
+    MONGODB_URI              = os.getenv("MONGODB_URI", "")
+    MONGODB_DATABASE         = os.getenv("MONGODB_DATABASE", "test")
+    MONGODB_USERS_COLLECTION = os.getenv("MONGODB_USERS_COLLECTION", "users")
+    SIGNUP_URL               = os.getenv(
+        "SIGNUP_URL", "https://agrisetu-1-f5md.onrender.com/signup"
+    )
+    DEVICE_ID_PEPPER         = os.getenv("DEVICE_ID_PEPPER", SECRET_KEY)
+    SENSOR_FRESHNESS_SECONDS = int(os.getenv("SENSOR_FRESHNESS_SECONDS", "30"))
 
     # ── ThingESP ───────────────────────────────────────────────────────────────
     THINGESP_USERNAME = os.getenv("THINGESP_USERNAME", "Noctum")
@@ -53,6 +64,8 @@ class Config:
         cls.UPLOADS_DIR.mkdir(exist_ok=True)
         if not cls.THINGESP_TOKEN:
             print("⚠️  THINGESP_TOKEN not set — Arduino direct ingest still works via /api/arduino-data.")
+        if not cls.MONGODB_URI:
+            print("WARNING: MONGODB_URI not set; login, fields, and telemetry are unavailable.")
         return True
 
 

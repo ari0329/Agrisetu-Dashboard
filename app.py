@@ -9,17 +9,39 @@ AgriSetu Smart Farming Assistant — Flask Backend
 - /api/report        : PDF report
 """
 import os
+import hmac
 import logging
 import traceback
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, request, jsonify, send_file, render_template
+from flask import (
+    Flask,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    session,
+    url_for,
+)
 
 from config import Config
-from thingesp_client import get_sensor_data, get_connection_status
 from advisory import full_advisory_bundle
 from vision_analyzer import analyze_leaf_image, analyze_demo_profile
-from farm_store import append_snapshot, get_analytics_summary, list_fields
+from mongo_store import (
+    DuplicateDevice,
+    StoreUnavailable,
+    append_snapshot,
+    authenticate_user,
+    create_field,
+    get_analytics_summary,
+    get_connection_status,
+    get_history,
+    get_sensor_data,
+    list_fields,
+    save_device_telemetry,
+    user_exists,
+)
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 Config.LOGS_DIR.mkdir(exist_ok=True)
@@ -34,14 +56,29 @@ logger = logging.getLogger(__name__)
 # ── Flask ─────────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 app.config["SECRET_KEY"] = Config.SECRET_KEY
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=Config.SESSION_COOKIE_SECURE,
+)
 
 # ── ML models ─────────────────────────────────────────────────────────────────
 models_loaded = False
 crop_model = label_encoder = month_model = scaler = None
 month_lookup = {}
+model_load_error = ""
 
 try:
     import joblib, pandas as pd, numpy as np
+
+    required_model_paths = (
+        Config.CROP_MODEL_PATH,
+        Config.LABEL_ENCODER_PATH,
+        Config.SCALER_PATH,
+    )
+    missing = [path.name for path in required_model_paths if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(f"Missing model artifacts: {', '.join(missing)}")
 
     crop_model    = joblib.load(Config.CROP_MODEL_PATH)
     label_encoder = joblib.load(Config.LABEL_ENCODER_PATH)
@@ -53,9 +90,10 @@ try:
         month_model = joblib.load(Config.MONTH_MODEL_PATH)
 
     models_loaded = True
-    logger.info("✅ ML models loaded")
+    logger.info("ML models loaded")
 except Exception as e:
-    logger.warning(f"⚠️  Models unavailable — rule-based fallback ({e})")
+    model_load_error = str(e)
+    logger.warning(f"Models unavailable; using rule-based fallback ({e})")
 
 FEATURE_COLUMNS = [
     "Soil_Moisture_%", "Soil_Temperature_C",
@@ -78,16 +116,97 @@ CROP_THRESHOLDS = {
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _offline_error():
-    status = get_connection_status()
+def _user_id():
+    return session.get("user", {}).get("id", "")
+
+
+def _requested_field_id(body=None):
+    return (
+        (body or {}).get("field_id")
+        or request.args.get("field_id")
+        or ""
+    ).strip()
+
+
+def _offline_error(field_id):
+    status = get_connection_status(_user_id(), field_id)
     return jsonify({
         "success": False,
         "arduino_offline": True,
-        "error": "Arduino is offline — no real sensor data available",
+        "error": "Device is offline or this field has no sensor data",
         "detail": status.get("error", ""),
         "last_seen": status.get("last_seen"),
-        "token_configured": status.get("token_configured", False),
     }), 503
+
+
+@app.before_request
+def require_login():
+    public_endpoints = {"login", "logout", "health", "receive_arduino_data", "static"}
+    if request.endpoint in public_endpoints or session.get("user"):
+        return None
+    if request.path.startswith("/api/"):
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+    return redirect(url_for("login", next=request.path))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if session.get("user"):
+        return redirect(url_for("home"))
+
+    error = ""
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        password = request.form.get("password") or ""
+        try:
+            if not user_exists(email):
+                return redirect(Config.SIGNUP_URL)
+            user = authenticate_user(email, password)
+            if user:
+                session.clear()
+                session["user"] = user
+                session.permanent = True
+                return redirect(url_for("home"))
+            error = "Incorrect email or password."
+        except StoreUnavailable:
+            error = "Login is temporarily unavailable because MongoDB is not configured."
+        except Exception as exc:
+            logger.warning("Login failed: %s", exc)
+            error = "Unable to sign in. Please try again."
+
+    return render_template("login.html", error=error, signup_url=Config.SIGNUP_URL)
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+@app.route("/api/me")
+def api_me():
+    return jsonify({"success": True, "user": session["user"]})
+
+
+@app.route("/api/fields", methods=["GET", "POST"])
+def api_fields():
+    try:
+        if request.method == "GET":
+            return jsonify({"success": True, "fields": list_fields(_user_id())})
+
+        body = request.get_json(silent=True) or {}
+        field = create_field(
+            _user_id(),
+            body.get("name", ""),
+            body.get("device_id", ""),
+        )
+        return jsonify({"success": True, "field": field}), 201
+    except DuplicateDevice as exc:
+        return jsonify({"success": False, "error": str(exc)}), 409
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except StoreUnavailable as exc:
+        return jsonify({"success": False, "error": str(exc)}), 503
 
 
 def compute_confidence(sensor_data, crop):
@@ -128,7 +247,7 @@ def rule_predict(sensor_data, preferred_crop):
 
 @app.route("/")
 def home():
-    return render_template("index.html")
+    return render_template("index.html", user=session["user"])
 
 
 @app.route("/api/status")
@@ -137,14 +256,22 @@ def api_status():
     Arduino / ThingESP connection status.
     The frontend polls this to show the connection banner.
     """
-    status = get_connection_status()
+    field_id = _requested_field_id()
+    if not field_id:
+        return jsonify({
+            "success": True,
+            "connected": False,
+            "last_seen": None,
+            "age_seconds": None,
+            "error": "Add or select a field",
+        })
+    status = get_connection_status(_user_id(), field_id)
     return jsonify({
         "success":    True,
         "connected":  status["connected"],
         "last_seen":  status["last_seen"],
         "age_seconds":status["age_seconds"],
         "error":      status["error"],
-        "token_configured": status["token_configured"],
     })
 
 
@@ -154,10 +281,13 @@ def api_sensor_data():
     Returns real Arduino sensor data.
     Returns 503 when Arduino is offline — never returns fake values.
     """
-    data = get_sensor_data()
+    field_id = _requested_field_id()
+    if not field_id:
+        return jsonify({"success": False, "error": "Select a field"}), 400
+    data = get_sensor_data(_user_id(), field_id)
 
     if data is None:
-        return _offline_error()
+        return _offline_error(field_id)
 
     return jsonify({
         "success": True,
@@ -173,20 +303,15 @@ def api_predict():
     Run ML / rule-based prediction.
     Blocked with 503 if no real Arduino data available.
     """
-    # Gate: refuse if Arduino is offline
-    sensor_data = get_sensor_data()
+    body = request.get_json(silent=True) or {}
+    field_id = _requested_field_id(body)
+    sensor_data = get_sensor_data(_user_id(), field_id)
     if sensor_data is None:
-        return _offline_error()
+        return _offline_error(field_id)
 
     try:
-        body          = request.get_json() or {}
         preferred     = body.get("crop", "")
         pred_text     = body.get("prediction_text", "")
-
-        # Prefer sensor_data from body if supplied, otherwise use fresh fetch
-        client_sensor = body.get("sensor_data", {})
-        if client_sensor:
-            sensor_data = client_sensor
 
         if models_loaded and scaler is not None:
             import pandas as pd
@@ -226,10 +351,14 @@ def api_predict():
             "timestamp":        datetime.now().isoformat(),
         }
 
-        field_id = (body.get("field_id") or "field-1").strip() or "field-1"
         try:
-            append_snapshot(sensor_data, advisory=advisory, prediction=prediction,
-                            field_id=field_id)
+            append_snapshot(
+                _user_id(),
+                field_id,
+                sensor_data,
+                advisory=advisory,
+                prediction=prediction,
+            )
         except Exception as store_err:
             logger.warning(f"Analytics store skip: {store_err}")
 
@@ -246,16 +375,22 @@ def api_advisory():
     Uses live Arduino data when available; POST may supply sensor_data for demos.
     """
     body = request.get_json(silent=True) or {}
-    sensor_data = body.get("sensor_data") or get_sensor_data()
+    field_id = _requested_field_id(body)
+    sensor_data = get_sensor_data(_user_id(), field_id)
     if sensor_data is None:
-        return _offline_error()
+        return _offline_error(field_id)
 
     vision = body.get("vision")
-    field_id = (body.get("field_id") or request.args.get("field_id") or "field-1").strip()
     bundle = full_advisory_bundle(sensor_data, vision=vision)
 
     try:
-        append_snapshot(sensor_data, advisory=bundle, vision=vision, field_id=field_id)
+        append_snapshot(
+            _user_id(),
+            field_id,
+            sensor_data,
+            advisory=bundle,
+            vision=vision,
+        )
     except Exception as store_err:
         logger.warning(f"Analytics store skip: {store_err}")
 
@@ -277,12 +412,12 @@ def api_vision():
     """
     try:
         crop_hint = ""
-        field_id = "field-1"
+        field_id = ""
         result = None
 
         if request.content_type and "multipart/form-data" in request.content_type:
             crop_hint = (request.form.get("crop") or "").strip()
-            field_id = (request.form.get("field_id") or "field-1").strip() or "field-1"
+            field_id = (request.form.get("field_id") or "").strip()
             file = request.files.get("image") or request.files.get("file")
             if not file:
                 return jsonify({"success": False, "error": "No image file uploaded"}), 400
@@ -290,7 +425,7 @@ def api_vision():
         else:
             body = request.get_json(silent=True) or {}
             crop_hint = (body.get("crop") or "").strip()
-            field_id = (body.get("field_id") or "field-1").strip() or "field-1"
+            field_id = (body.get("field_id") or "").strip()
             demo = body.get("demo_profile")
             if demo:
                 result = analyze_demo_profile(demo)
@@ -306,16 +441,24 @@ def api_vision():
                     "error": "Provide multipart image, image_base64, or demo_profile",
                 }), 400
 
+        if not field_id:
+            return jsonify({"success": False, "error": "Select a field"}), 400
+
         if not result.get("success"):
             return jsonify(result), 400
 
-        sensor_data = get_sensor_data()
+        sensor_data = get_sensor_data(_user_id(), field_id)
         advisory = None
         if sensor_data:
             advisory = full_advisory_bundle(sensor_data, vision=result)
             try:
-                append_snapshot(sensor_data, advisory=advisory, vision=result,
-                                field_id=field_id)
+                append_snapshot(
+                    _user_id(),
+                    field_id,
+                    sensor_data,
+                    advisory=advisory,
+                    vision=result,
+                )
             except Exception as store_err:
                 logger.warning(f"Analytics store skip: {store_err}")
 
@@ -333,15 +476,16 @@ def api_vision():
 @app.route("/api/analytics")
 def api_analytics():
     """Farm analytics: historical trends, yield-risk, disease/pest event counts."""
-    field_id = (request.args.get("field_id") or "field-1").strip() or "field-1"
+    field_id = _requested_field_id()
+    if not field_id:
+        return jsonify({"success": True, "summary": None, "history": [], "fields": []})
     limit = min(int(request.args.get("limit", 50)), 200)
-    summary = get_analytics_summary(field_id)
-    from farm_store import get_history
+    summary = get_analytics_summary(_user_id(), field_id)
     return jsonify({
         "success": True,
         "summary": summary,
-        "history": get_history(field_id, limit=limit),
-        "fields": list_fields(),
+        "history": get_history(_user_id(), field_id, limit=limit),
+        "fields": list_fields(_user_id()),
     })
 
 
@@ -351,13 +495,14 @@ def api_report():
     Generate PDF report.
     Blocked with 503 if no real Arduino data.
     """
-    sensor_data = get_sensor_data()
+    body = request.get_json(silent=True) or {}
+    field_id = _requested_field_id(body)
+    sensor_data = get_sensor_data(_user_id(), field_id)
     if sensor_data is None:
-        return _offline_error()
+        return _offline_error(field_id)
 
     try:
         from pdf_generator import generate_pdf
-        body       = request.get_json() or {}
         prediction = body.get("prediction", {})
 
         pdf_path, crop_name, growth_months = generate_pdf(
@@ -387,17 +532,26 @@ def serve_report(filename):
 
 @app.route("/health")
 def health():
-    status = get_connection_status()
+    missing_models = [
+        str(path.name)
+        for path in (
+            Config.CROP_MODEL_PATH,
+            Config.LABEL_ENCODER_PATH,
+            Config.SCALER_PATH,
+        )
+        if not path.exists()
+    ]
     return jsonify({
         "status":         "healthy",
         "models_loaded":  models_loaded,
-        "arduino":        status,
+        "model_load_error": model_load_error or None,
+        "missing_model_files": missing_models,
+        "mongodb_configured": bool(Config.MONGODB_URI),
         "modules": {
             "advisory": True,
             "vision": True,
             "analytics": True,
         },
-        "fields": list_fields(),
         "timestamp":      datetime.now().isoformat(),
     })
 
@@ -412,52 +566,75 @@ def server_error(e):
 
 
 # ── Secret key Arduino must send ─────────────────────────────────────────────
-ARDUINO_SECRET = os.getenv("ARDUINO_SECRET", "agrisetu-secret-key-2024")
+ARDUINO_SECRET = os.getenv("ARDUINO_SECRET", "")
 
 @app.route("/api/arduino-data", methods=["POST"])
 def receive_arduino_data():
-    """Arduino POSTs real sensor JSON here every 30 seconds."""
+    """Accept telemetry from a configured, user-paired device."""
 
     # Validate secret header
     secret = request.headers.get("X-Arduino-Secret", "")
-    if secret != ARDUINO_SECRET:
-        logger.warning("⛔ Rejected Arduino POST — wrong secret")
+    if not ARDUINO_SECRET:
+        logger.error("ARDUINO_SECRET is not configured")
+        return jsonify({"success": False, "error": "Ingest is not configured"}), 503
+    if not hmac.compare_digest(secret, ARDUINO_SECRET):
+        logger.warning("Rejected Arduino POST: wrong secret")
         return jsonify({"success": False, "error": "Unauthorized"}), 401
 
     body = request.get_json()
     if not body:
         return jsonify({"success": False, "error": "Empty body"}), 400
 
-    from thingesp_client import arduino_store
+    device_id = (body.get("device_id") or "").strip()
+    if not device_id:
+        return jsonify({"success": False, "error": "device_id is required"}), 400
 
-    L1 = int(body.get("L1", 0))
-    L2 = int(body.get("L2", 0))
-    L3 = int(body.get("L3", 0))
-    L4 = int(body.get("L4", 0))
+    try:
+        L1 = int(body.get("L1", 0))
+        L2 = int(body.get("L2", 0))
+        L3 = int(body.get("L3", 0))
+        L4 = int(body.get("L4", 0))
 
-    normalized = {
-        "soil_moisture":    round(float(body.get("soil_moisture",    0)), 1),
-        "soil_temperature": round(float(body.get("soil_temperature", 25)), 1),
-        "water_level":      min(L1*25 + L2*25 + L3*25 + L4*25, 100),
-        "L1": L1, "L2": L2, "L3": L3, "L4": L4,
-        "air_temperature":  None,
-        "humidity":         None,
-        "rainfall":         None,
-        "light_intensity":  None,
-        "ph":               None,
-    }
+        normalized = {
+            "soil_moisture":    round(float(body.get("soil_moisture", 0)), 1),
+            "soil_temperature": round(float(body.get("soil_temperature", 25)), 1),
+            "water_level":      min(L1*25 + L2*25 + L3*25 + L4*25, 100),
+            "water_status":     str(body.get("water_status", ""))[:40],
+            "L1": L1, "L2": L2, "L3": L3, "L4": L4,
+            "air_temperature":  None,
+            "humidity":         None,
+            "rainfall":         None,
+            "light_intensity":  None,
+            "ph":               None,
+        }
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "Invalid sensor values"}), 400
 
-    arduino_store.update(normalized)
-    logger.info(f"✅ Arduino data received: "
+    try:
+        stored = save_device_telemetry(device_id, normalized)
+    except StoreUnavailable as exc:
+        return jsonify({"success": False, "error": str(exc)}), 503
+    if not stored:
+        return jsonify({
+            "success": False,
+            "error": "Device ID is not paired to a field",
+        }), 404
+
+    logger.info(f"Arduino data received: "
                 f"moisture={normalized['soil_moisture']}% "
-                f"temp={normalized['soil_temperature']}°C "
+                f"temp={normalized['soil_temperature']} C "
                 f"water={normalized['water_level']}%")
 
-    return jsonify({"success": True, "message": "Data stored"})
+    return jsonify({
+        "success": True,
+        "message": "Data stored",
+        "field_id": stored["field_id"],
+        "received_at": stored["received_at"].isoformat(),
+    })
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    logger.info("🚀 AgriSetu Dashboard starting…")
+    logger.info("AgriSetu Dashboard starting")
     app.run(host="0.0.0.0", port=Config.PORT,
             debug=(Config.FLASK_ENV == "development"))
 

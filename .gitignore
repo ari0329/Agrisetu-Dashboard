@@ -4,9 +4,10 @@ __pycache__/
 *.pyo
 myenv/
 .env
+arduino_secrets.h
 
-# Models (large files — add separately or via Git LFS)
-models/*.pkl
+# Trained model artifacts are required by the deployed web service.
+# If they become large, store them with Git LFS or a private artifact store.
 
 # Generated files
 reports/*.pdf

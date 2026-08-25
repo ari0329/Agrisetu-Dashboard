@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in — AgriSetu</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body class="auth-page">
+  <main class="auth-shell">
+    <section class="glass-card auth-card">
+      <div class="logo auth-logo">
+        <div class="logo-icon">🌱</div>
+        <div>
+          AGRISETU
+          <div class="logo-sub">Your farms, devices, and live intelligence</div>
+        </div>
+      </div>
+
+      <div>
+        <h1>Welcome back</h1>
+        <p>Sign in with the same account you use on AgriSetu.</p>
+      </div>
+
+      {% if error %}
+        <div class="auth-error" role="alert">{{ error }}</div>
+      {% endif %}
+
+      <form method="post" class="auth-form">
+        <div class="form-group">
+          <label class="form-label" for="email">Email</label>
+          <input class="form-input" id="email" name="email" type="email"
+                 autocomplete="email" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input class="form-input" id="password" name="password" type="password"
+                 autocomplete="current-password" required />
+        </div>
+        <button class="btn btn-primary auth-submit" type="submit">Sign in</button>
+      </form>
+
+      <p class="auth-signup">
+        No account? <a href="{{ signup_url }}">Create one on AgriSetu</a>
+      </p>
+    </section>
+  </main>
+</body>
+</html>

@@ -15,7 +15,7 @@ window.state = {
   advisory:      null,
   vision:        null,
   connected:     false,
-  fieldId:       "field-1",
+  fieldId:       "",
   historyMoist:  [],
   historyTemp:   [],
   historyLabels: [],
@@ -39,7 +39,8 @@ updateClock();
 // ── Connection status polling ─────────────────────────────────────────────────
 async function fetchConnectionStatus() {
   try {
-    const res  = await fetch("/api/status");
+    const fieldId = getFieldId();
+    const res  = await fetch(`/api/status?field_id=${encodeURIComponent(fieldId)}`);
     const json = await res.json();
     updateConnectionBanner(json);
     window.state.connected = json.connected;
@@ -65,9 +66,8 @@ function updateConnectionBanner(status) {
   } else {
     banner.className = "connection-banner offline";
     dot.className    = "banner-dot offline";
-    let msg = "Arduino offline";
-    if (!status.token_configured) msg += " — THINGESP_TOKEN not set";
-    else if (status.error)        msg += ` — ${status.error}`;
+    let msg = getFieldId() ? "Device offline" : "No field selected";
+    if (status.error) msg += ` — ${status.error}`;
     text.textContent = msg;
   }
 }
@@ -88,7 +88,68 @@ function updateButtonStates() {
 
 function getFieldId() {
   const el = $("#field-id");
-  return (el && el.value) || window.state.fieldId || "field-1";
+  return (el && el.value) || window.state.fieldId || "";
+}
+
+async function loadFields(selectFieldId = "") {
+  const res = await fetch("/api/fields");
+  if (res.status === 401) {
+    window.location.href = "/login";
+    return;
+  }
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || "Unable to load fields");
+
+  const select = $("#field-id");
+  const fields = json.fields || [];
+  if (!select) return;
+
+  select.innerHTML = fields.length
+    ? fields.map(field =>
+        `<option value="${field.id}">${escapeHtml(field.name)}</option>`
+      ).join("")
+    : `<option value="">No fields yet</option>`;
+
+  const nextId = selectFieldId || window.state.fieldId || fields[0]?.id || "";
+  if (fields.some(field => field.id === nextId)) select.value = nextId;
+  window.state.fieldId = select.value;
+}
+
+function escapeHtml(value) {
+  const node = document.createElement("div");
+  node.textContent = String(value ?? "");
+  return node.innerHTML;
+}
+
+async function addField(event) {
+  event.preventDefault();
+  const button = $("#btn-save-field");
+  button.disabled = true;
+  button.innerHTML = '<span class="spinner"></span> Pairing…';
+  try {
+    const res = await fetch("/api/fields", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: $("#field-name").value.trim(),
+        device_id: $("#field-device-id").value.trim(),
+      }),
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || "Unable to add field");
+    await loadFields(json.field.id);
+    $("#field-form").reset();
+    $("#field-dialog").close();
+    await fetchConnectionStatus();
+    await fetchSensorData();
+    fetchAnalytics();
+    toast(`Field "${json.field.name}" paired`, "success");
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Pair field";
+  }
 }
 
 // ── Farmer advisory + environmental risk ──────────────────────────────────────
@@ -102,7 +163,6 @@ async function fetchAdvisory() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        sensor_data: window.state.sensorData,
         field_id: getFieldId(),
         vision: window.state.vision || undefined,
       }),
@@ -376,7 +436,15 @@ function initAnalyticsChart() {
 // ── Sensor data polling ───────────────────────────────────────────────────────
 async function fetchSensorData() {
   try {
-    const res  = await fetch("/api/sensor-data");
+    const fieldId = getFieldId();
+    if (!fieldId) {
+      window.state.connected = false;
+      window.state.sensorData = null;
+      renderSensorCardsOffline();
+      updateButtonStates();
+      return;
+    }
+    const res  = await fetch(`/api/sensor-data?field_id=${encodeURIComponent(fieldId)}`);
 
     if (res.status === 503) {
       window.state.connected  = false;
@@ -742,7 +810,6 @@ async function runPrediction() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         crop, prediction_text: ptext,
-        sensor_data: window.state.sensorData,
         field_id: getFieldId(),
       }),
     });
@@ -843,8 +910,8 @@ async function generateReport() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        sensor_data: window.state.sensorData,
         prediction:  window.state.prediction || {},
+        field_id: getFieldId(),
       }),
     });
     const json = await res.json();
@@ -906,16 +973,31 @@ async function init() {
 
   const fieldSel = $("#field-id");
   if (fieldSel) {
-    fieldSel.addEventListener("change", () => {
+    fieldSel.addEventListener("change", async () => {
       window.state.fieldId = getFieldId();
+      window.state.sensorData = null;
+      window.state.advisory = null;
+      await fetchConnectionStatus();
+      await fetchSensorData();
       fetchAdvisory();
       fetchAnalytics();
     });
   }
 
+  const fieldDialog = $("#field-dialog");
+  $("#btn-add-field")?.addEventListener("click", () => fieldDialog?.showModal());
+  $("#btn-close-field")?.addEventListener("click", () => fieldDialog?.close());
+  $("#btn-cancel-field")?.addEventListener("click", () => fieldDialog?.close());
+  $("#field-form")?.addEventListener("submit", addField);
+
   // Show offline state immediately before first fetch
   renderSensorCardsOffline();
   updateButtonStates();
+  try {
+    await loadFields();
+  } catch (err) {
+    toast(err.message, "error");
+  }
   fetchAnalytics();
 
   // First fetches
