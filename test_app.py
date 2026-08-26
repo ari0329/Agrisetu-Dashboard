@@ -61,6 +61,39 @@ class AgriSetuAppTest(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         create_field.assert_called_once_with("user-1", "North Field", "DEVICE-001")
 
+    @patch("app.create_field", side_effect=app_module.DuplicateDevice("This Device ID is already paired"))
+    def test_duplicate_device_id_returns_conflict(self, _create_field):
+        self.login_session()
+        response = self.client.post(
+            "/api/fields",
+            json={"name": "South Field", "device_id": "DEVICE-001"},
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.get_json()["error"], "This Device ID is already paired")
+
+    @patch("app.update_field")
+    def test_field_update_is_owned_by_logged_in_user(self, update_field):
+        self.login_session()
+        update_field.return_value = {
+            "id": "field-1",
+            "name": "North Plot",
+            "paired": True,
+            "created_at": "2026-01-01T00:00:00+00:00",
+        }
+        response = self.client.patch(
+            "/api/fields/field-1",
+            json={"name": "North Plot", "device_id": "DEVICE-002"},
+        )
+        self.assertEqual(response.status_code, 200)
+        update_field.assert_called_once_with("user-1", "field-1", "North Plot", "DEVICE-002")
+
+    @patch("app.delete_field", return_value=True)
+    def test_field_delete_removes_owned_field(self, delete_field):
+        self.login_session()
+        response = self.client.delete("/api/fields/field-1")
+        self.assertEqual(response.status_code, 200)
+        delete_field.assert_called_once_with("user-1", "field-1")
+
     @patch("app.save_device_telemetry")
     def test_arduino_device_id_routes_telemetry(self, save_device_telemetry):
         app_module.ARDUINO_SECRET = "test-ingest-secret"

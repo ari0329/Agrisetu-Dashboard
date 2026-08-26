@@ -16,6 +16,7 @@ window.state = {
   vision:        null,
   connected:     false,
   fieldId:       "",
+  fields:        [],
   historyMoist:  [],
   historyTemp:   [],
   historyLabels: [],
@@ -95,14 +96,15 @@ async function loadFields(selectFieldId = "") {
   const res = await fetch("/api/fields");
   if (res.status === 401) {
     window.location.href = "/login";
-    return;
+    return [];
   }
   const json = await res.json();
   if (!json.success) throw new Error(json.error || "Unable to load fields");
 
-  const select = $("#field-id");
   const fields = json.fields || [];
-  if (!select) return;
+  window.state.fields = fields;
+  const select = $("#field-id");
+  if (!select) return fields;
 
   select.innerHTML = fields.length
     ? fields.map(field =>
@@ -113,6 +115,8 @@ async function loadFields(selectFieldId = "") {
   const nextId = selectFieldId || window.state.fieldId || fields[0]?.id || "";
   if (fields.some(field => field.id === nextId)) select.value = nextId;
   window.state.fieldId = select.value;
+  renderFieldList(fields);
+  return fields;
 }
 
 function escapeHtml(value) {
@@ -121,35 +125,180 @@ function escapeHtml(value) {
   return node.innerHTML;
 }
 
-async function addField(event) {
+function clearFieldFormError() {
+  const error = $("#field-form-error");
+  if (!error) return;
+  error.textContent = "";
+  error.classList.add("hidden");
+}
+
+function showFieldFormError(message) {
+  const error = $("#field-form-error");
+  if (!error) return;
+  error.textContent = message;
+  error.classList.remove("hidden");
+}
+
+function formatFieldDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function renderFieldList(fields = window.state.fields || []) {
+  const list = $("#field-list");
+  if (!list) return;
+
+  if (!fields.length) {
+    list.innerHTML = '<p class="field-list-empty">No fields yet. Add one with + Field.</p>';
+    return;
+  }
+
+  list.innerHTML = fields.map(field => `
+    <div class="field-list-item" data-field-id="${escapeHtml(field.id)}">
+      <div class="field-list-meta">
+        <div class="field-list-name">${escapeHtml(field.name)}</div>
+        <div class="field-list-date">Paired ${escapeHtml(formatFieldDate(field.created_at))}</div>
+      </div>
+      <div class="field-list-actions">
+        <button class="btn btn-outline btn-sm btn-edit-field" type="button" data-field-id="${escapeHtml(field.id)}">Edit</button>
+        <button class="btn btn-outline btn-sm btn-delete-field" type="button" data-field-id="${escapeHtml(field.id)}">Delete</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function openAddFieldDialog() {
+  const form = $("#field-form");
+  const deviceInput = $("#field-device-id");
+  clearFieldFormError();
+  $("#field-edit-id").value = "";
+  $("#field-dialog-title").textContent = "Add a field";
+  $("#field-dialog-copy").textContent =
+    "Enter the exact Device ID configured in the ESP8266 sketch. It is used once to securely pair incoming readings with this field.";
+  $("#field-device-hint")?.classList.add("hidden");
+  $("#btn-save-field").textContent = "Pair field";
+  if (deviceInput) {
+    deviceInput.value = "";
+    deviceInput.required = true;
+  }
+  form?.reset();
+  $("#fields-manage-dialog")?.close();
+  $("#field-dialog")?.showModal();
+}
+
+function openEditFieldDialog(fieldId) {
+  const field = (window.state.fields || []).find(item => item.id === fieldId);
+  if (!field) return;
+
+  clearFieldFormError();
+  $("#field-edit-id").value = field.id;
+  $("#field-name").value = field.name;
+  const deviceInput = $("#field-device-id");
+  if (deviceInput) {
+    deviceInput.value = "";
+    deviceInput.required = false;
+  }
+  $("#field-dialog-title").textContent = "Edit field";
+  $("#field-dialog-copy").textContent =
+    "Update the field name or enter a new Device ID to re-pair the ESP8266.";
+  $("#field-device-hint")?.classList.remove("hidden");
+  $("#btn-save-field").textContent = "Save changes";
+  $("#fields-manage-dialog")?.close();
+  $("#field-dialog")?.showModal();
+}
+
+async function saveField(event) {
   event.preventDefault();
   const button = $("#btn-save-field");
+  const editId = $("#field-edit-id").value.trim();
+  const isEdit = Boolean(editId);
+  const name = $("#field-name").value.trim();
+  const deviceId = $("#field-device-id").value.trim();
+
+  clearFieldFormError();
+
+  if (!isEdit && !deviceId) {
+    showFieldFormError("Device ID is required when pairing a new field.");
+    return;
+  }
+
   button.disabled = true;
-  button.innerHTML = '<span class="spinner"></span> Pairing…';
+  button.innerHTML = `<span class="spinner"></span> ${isEdit ? "Saving…" : "Pairing…"}`;
   try {
-    const res = await fetch("/api/fields", {
-      method: "POST",
+    const payload = { name };
+    if (deviceId) payload.device_id = deviceId;
+
+    const res = await fetch(isEdit ? `/api/fields/${encodeURIComponent(editId)}` : "/api/fields", {
+      method: isEdit ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: $("#field-name").value.trim(),
-        device_id: $("#field-device-id").value.trim(),
-      }),
+      body: JSON.stringify(isEdit ? payload : { name, device_id: deviceId }),
     });
     const json = await res.json();
-    if (!json.success) throw new Error(json.error || "Unable to add field");
-    await loadFields(json.field.id);
+
+    if (res.status === 409) {
+      showFieldFormError(json.error || "This Device ID is already paired");
+      return;
+    }
+    if (!json.success) throw new Error(json.error || "Unable to save field");
+
+    const fieldId = isEdit ? editId : json.field.id;
+    await loadFields(fieldId);
     $("#field-form").reset();
+    $("#field-edit-id").value = "";
     $("#field-dialog").close();
     await fetchConnectionStatus();
     await fetchSensorData();
     fetchAnalytics();
-    toast(`Field "${json.field.name}" paired`, "success");
+    toast(
+      isEdit ? `Field "${json.field.name}" updated` : `Field "${json.field.name}" paired`,
+      "success"
+    );
   } catch (err) {
-    toast(err.message, "error");
+    showFieldFormError(err.message);
   } finally {
     button.disabled = false;
-    button.textContent = "Pair field";
+    button.textContent = isEdit ? "Save changes" : "Pair field";
   }
+}
+
+async function deleteField(fieldId) {
+  const field = (window.state.fields || []).find(item => item.id === fieldId);
+  if (!field) return;
+
+  const confirmed = window.confirm(
+    `Delete "${field.name}"? This removes its telemetry and analytics history.`
+  );
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch(`/api/fields/${encodeURIComponent(fieldId)}`, {
+      method: "DELETE",
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || "Unable to delete field");
+
+    const wasSelected = getFieldId() === fieldId;
+    await loadFields();
+    if (wasSelected) {
+      await fetchConnectionStatus();
+      await fetchSensorData();
+      fetchAnalytics();
+    }
+    toast(`Field "${field.name}" deleted`, "success");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+function openManageFieldsDialog() {
+  renderFieldList(window.state.fields || []);
+  $("#fields-manage-dialog")?.showModal();
 }
 
 // ── Farmer advisory + environmental risk ──────────────────────────────────────
@@ -985,10 +1134,24 @@ async function init() {
   }
 
   const fieldDialog = $("#field-dialog");
-  $("#btn-add-field")?.addEventListener("click", () => fieldDialog?.showModal());
+  const manageDialog = $("#fields-manage-dialog");
+  $("#btn-add-field")?.addEventListener("click", openAddFieldDialog);
+  $("#btn-manage-fields")?.addEventListener("click", openManageFieldsDialog);
+  $("#btn-manage-add-field")?.addEventListener("click", openAddFieldDialog);
   $("#btn-close-field")?.addEventListener("click", () => fieldDialog?.close());
   $("#btn-cancel-field")?.addEventListener("click", () => fieldDialog?.close());
-  $("#field-form")?.addEventListener("submit", addField);
+  $("#btn-close-manage-fields")?.addEventListener("click", () => manageDialog?.close());
+  $("#btn-close-manage-fields-bottom")?.addEventListener("click", () => manageDialog?.close());
+  $("#field-form")?.addEventListener("submit", saveField);
+  $("#field-list")?.addEventListener("click", event => {
+    const editBtn = event.target.closest(".btn-edit-field");
+    const deleteBtn = event.target.closest(".btn-delete-field");
+    if (editBtn) {
+      openEditFieldDialog(editBtn.dataset.fieldId);
+      return;
+    }
+    if (deleteBtn) deleteField(deleteBtn.dataset.fieldId);
+  });
 
   // Show offline state immediately before first fetch
   renderSensorCardsOffline();

@@ -153,6 +153,57 @@ def get_field(user_id: str, field_id: str) -> Optional[dict]:
     return _database().fields.find_one({"_id": oid, "user_id": user_id})
 
 
+def update_field(
+    user_id: str,
+    field_id: str,
+    name: str,
+    device_id: Optional[str] = None,
+) -> dict:
+    field = get_field(user_id, field_id)
+    if not field:
+        raise ValueError("Field not found")
+
+    name = (name or "").strip()
+    if not 1 <= len(name) <= 80:
+        raise ValueError("Field name must be between 1 and 80 characters")
+
+    update_doc: Dict[str, Any] = {"name": name}
+    if device_id is not None:
+        device_id = device_id.strip()
+        if device_id:
+            if not 6 <= len(device_id) <= 128:
+                raise ValueError("Device ID must be between 6 and 128 characters")
+            new_key = _device_key(device_id)
+            existing = _database().fields.find_one({"device_key": new_key})
+            if existing and str(existing["_id"]) != field_id:
+                raise DuplicateDevice("This Device ID is already paired")
+            update_doc["device_key"] = new_key
+
+    _database().fields.update_one(
+        {"_id": field["_id"], "user_id": user_id},
+        {"$set": update_doc},
+    )
+    return {
+        "id": field_id,
+        "name": name,
+        "paired": True,
+        "created_at": field["created_at"].isoformat(),
+    }
+
+
+def delete_field(user_id: str, field_id: str) -> bool:
+    field = get_field(user_id, field_id)
+    if not field:
+        return False
+
+    db = _database()
+    db.fields.delete_one({"_id": field["_id"], "user_id": user_id})
+    db.telemetry_latest.delete_many({"field_id": field_id})
+    db.telemetry_history.delete_many({"field_id": field_id})
+    db.analytics.delete_many({"field_id": field_id, "user_id": user_id})
+    return True
+
+
 def save_device_telemetry(device_id: str, data: dict) -> Optional[dict]:
     """Resolve a paired Device ID and store its latest reading plus history."""
     db = _database()

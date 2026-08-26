@@ -34,12 +34,14 @@ from mongo_store import (
     append_snapshot,
     authenticate_user,
     create_field,
+    delete_field,
     get_analytics_summary,
     get_connection_status,
     get_history,
     get_sensor_data,
     list_fields,
     save_device_telemetry,
+    update_field,
     user_exists,
 )
 
@@ -201,6 +203,30 @@ def api_fields():
             body.get("device_id", ""),
         )
         return jsonify({"success": True, "field": field}), 201
+    except DuplicateDevice as exc:
+        return jsonify({"success": False, "error": str(exc)}), 409
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except StoreUnavailable as exc:
+        return jsonify({"success": False, "error": str(exc)}), 503
+
+
+@app.route("/api/fields/<field_id>", methods=["PATCH", "DELETE"])
+def api_field_detail(field_id):
+    try:
+        if request.method == "DELETE":
+            if not delete_field(_user_id(), field_id):
+                return jsonify({"success": False, "error": "Field not found"}), 404
+            return jsonify({"success": True, "message": "Field deleted"})
+
+        body = request.get_json(silent=True) or {}
+        field = update_field(
+            _user_id(),
+            field_id,
+            body.get("name", ""),
+            body.get("device_id"),
+        )
+        return jsonify({"success": True, "field": field})
     except DuplicateDevice as exc:
         return jsonify({"success": False, "error": str(exc)}), 409
     except ValueError as exc:

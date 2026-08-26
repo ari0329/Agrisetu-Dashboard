@@ -46,8 +46,10 @@ AGRISETU/
 ├── mongo_store.py          # Users, fields, telemetry, analytics
 ├── config.py
 ├── pdf_generator.py
-├── thingesp_client.py      # Arduino / Redis sensor store
 ├── model.py                # ML training pipeline
+├── check_mongo.py          # MongoDB connection check utility
+├── agrisetu_esp8266.ino    # ESP8266 sketch
+├── arduino_secrets.example.h
 ├── templates/index.html
 ├── static/css/style.css
 ├── static/js/dashboard.js
@@ -104,6 +106,8 @@ avoided.
 | `POST` | `/api/vision` | Leaf image or `demo_profile` |
 | `GET` | `/api/analytics` | Field history + yield-risk summary |
 | `POST` | `/api/report` | PDF report |
+| `GET/POST` | `/api/fields` | List or pair fields |
+| `PATCH/DELETE` | `/api/fields/<id>` | Edit or delete a paired field |
 | `POST` | `/api/arduino-data` | Arduino ingest (`X-Arduino-Secret`) |
 | `GET` | `/health` | Health check |
 
