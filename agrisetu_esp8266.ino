@@ -1,8 +1,8 @@
 /*
  * AgriSetu ESP8266
- * - Services ThingESP every 200 ms
- * - Reads and POSTs telemetry every 5 seconds
- * - Pairs telemetry to a dashboard field using DEVICE_ID_VALUE
+ * - POSTs telemetry to the dashboard every 5 seconds
+ * - Optional ThingESP WhatsApp (disable if credentials fail — it blocks WiFi)
+ * - Pairs telemetry using DEVICE_ID_VALUE from arduino_secrets.h
  */
 
 #include <Wire.h>
@@ -10,18 +10,26 @@
 #include <ESP8266HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include "RTClib.h"
-#include <ThingESP.h>
 #include "arduino_secrets.h"
 
-const char* BACKEND_URL =
-  "https://agrisetu-dashboard.onrender.com/api/arduino-data";
+#ifndef THINGESP_ENABLED
+#define THINGESP_ENABLED 0
+#endif
 
+#if THINGESP_ENABLED
+#include <ThingESP.h>
 ThingESP8266 thing(
   THINGESP_USERNAME_VALUE,
   THINGESP_PROJECT_VALUE,
   THINGESP_TOKEN_VALUE
 );
+#endif
+
+const char* BACKEND_URL =
+  "https://agrisetu-dashboard.onrender.com/api/arduino-data";
+
 RTC_DS3231 rtc;
+WiFiClientSecure secureClient;
 
 #define SOIL_PIN A0
 #define LEVEL1 D5
@@ -30,27 +38,35 @@ RTC_DS3231 rtc;
 #define LEVEL4 D8
 
 bool rtcAvailable = false;
+bool telemetryBusy = false;
 float soilMoisture = 0.0;
 float soilTemperature = 25.0;
 int level1 = 0, level2 = 0, level3 = 0, level4 = 0;
-String waterStatus = "Unknown";
-String sensorTimestamp = "N/A";
+char sensorTimestamp[20] = "N/A";
 
 unsigned long lastPost = 0;
 unsigned long lastWhatsApp = 0;
 unsigned long lastThingTick = 0;
+unsigned long postCount = 0;
 
 const unsigned long POST_INTERVAL_MS = 5000UL;
 const unsigned long WHATSAPP_INTERVAL_MS = 300000UL;
 const unsigned long THING_TICK_MS = 200UL;
 
 void connectWiFi() {
+  if (WiFi.status() == WL_CONNECTED) return;
+
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(false);
   WiFi.begin(WIFI_SSID_VALUE, WIFI_PASSWORD_VALUE);
+
   Serial.print("Connecting to WiFi");
   for (int attempt = 0; WiFi.status() != WL_CONNECTED; attempt++) {
     delay(500);
     Serial.print(".");
+    yield();
+    ESP.wdtFeed();
     if (attempt >= 39) {
       Serial.println("\nWiFi failed; restarting");
       delay(1000);
@@ -73,7 +89,7 @@ int readLevelPin(int pin) {
   return activeReads >= 3 ? 1 : 0;
 }
 
-String describeWaterLevel() {
+const char* describeWaterLevel() {
   if (level4) return "Full (100%)";
   if (level3) return "High (75%)";
   if (level2) return "Mid (50%)";
@@ -86,45 +102,55 @@ void readSensors() {
   if (rtcAvailable) {
     soilTemperature = rtc.getTemperature();
     DateTime now = rtc.now();
-    char value[20];
     snprintf(
-      value, sizeof(value), "%04d-%02d-%02d %02d:%02d:%02d",
+      sensorTimestamp, sizeof(sensorTimestamp), "%04d-%02d-%02d %02d:%02d:%02d",
       now.year(), now.month(), now.day(),
       now.hour(), now.minute(), now.second()
     );
-    sensorTimestamp = String(value);
   }
   level1 = readLevelPin(LEVEL1);
   level2 = readLevelPin(LEVEL2);
   level3 = readLevelPin(LEVEL3);
   level4 = readLevelPin(LEVEL4);
-  waterStatus = describeWaterLevel();
 }
 
 bool postTelemetry() {
   if (WiFi.status() != WL_CONNECTED) return false;
 
-  String payload = "{";
-  payload += "\"soil_moisture\":" + String(soilMoisture, 1) + ",";
-  payload += "\"soil_temperature\":" + String(soilTemperature, 1) + ",";
-  payload += "\"L1\":" + String(level1) + ",";
-  payload += "\"L2\":" + String(level2) + ",";
-  payload += "\"L3\":" + String(level3) + ",";
-  payload += "\"L4\":" + String(level4) + ",";
-  payload += "\"water_status\":\"" + waterStatus + "\",";
-  payload += "\"timestamp\":\"" + sensorTimestamp + "\",";
-  payload += "\"device_id\":\"" DEVICE_ID_VALUE "\"";
-  payload += "}";
+  telemetryBusy = true;
 
+  char payload[320];
+  snprintf(
+    payload, sizeof(payload),
+    "{"
+    "\"soil_moisture\":%.1f,"
+    "\"soil_temperature\":%.1f,"
+    "\"L1\":%d,"
+    "\"L2\":%d,"
+    "\"L3\":%d,"
+    "\"L4\":%d,"
+    "\"water_status\":\"%s\","
+    "\"timestamp\":\"%s\","
+    "\"device_id\":\"" DEVICE_ID_VALUE "\""
+    "}",
+    soilMoisture,
+    soilTemperature,
+    level1, level2, level3, level4,
+    describeWaterLevel(),
+    sensorTimestamp
+  );
+
+  bool ok = false;
   for (int attempt = 1; attempt <= 3; attempt++) {
-    WiFiClientSecure client;
-    client.setFingerprint(BACKEND_TLS_FINGERPRINT);
-    client.setTimeout(15);
+    secureClient.stop();
+    yield();
+    ESP.wdtFeed();
 
     HTTPClient http;
     http.setTimeout(15000);
     http.setReuse(false);
-    if (!http.begin(client, BACKEND_URL)) {
+
+    if (!http.begin(secureClient, BACKEND_URL)) {
       Serial.println("HTTP initialization failed");
       delay(1000);
       continue;
@@ -135,15 +161,26 @@ bool postTelemetry() {
     int code = http.POST(payload);
     String response = http.getString();
     http.end();
+    secureClient.stop();
 
-    Serial.printf("POST attempt %d: HTTP %d %s\n", attempt, code, response.c_str());
-    if (code >= 200 && code < 300) return true;
-    if (code == 401 || code == 404) return false;
+    Serial.printf(
+      "POST #%lu attempt %d: HTTP %d %s (heap %u)\n",
+      postCount + 1, attempt, code, response.c_str(), ESP.getFreeHeap()
+    );
+
+    if (code >= 200 && code < 300) {
+      ok = true;
+      break;
+    }
+    if (code == 401 || code == 404) break;
     delay(1000);
   }
-  return false;
+
+  telemetryBusy = false;
+  return ok;
 }
 
+#if THINGESP_ENABLED
 String handleResponse(String query) {
   query.trim();
   query.toLowerCase();
@@ -152,18 +189,24 @@ String handleResponse(String query) {
   if (query == "temp" || query == "temperature")
     return "Soil Temp: " + String(soilTemperature, 1) + " C";
   if (query == "water" || query == "level")
-    return "Water: " + waterStatus;
+    return String("Water: ") + describeWaterLevel();
   if (query == "all" || query == "status" || query == "report") {
     readSensors();
     return "AgriSetu\nMoisture: " + String(soilMoisture, 1) +
       "%\nTemp: " + String(soilTemperature, 1) +
-      " C\nWater: " + waterStatus + "\nTime: " + sensorTimestamp;
+      " C\nWater: " + String(describeWaterLevel()) + "\nTime: " + sensorTimestamp;
   }
   return "Commands: moisture | temp | water | all";
 }
+#endif
 
 void setup() {
   Serial.begin(115200);
+  delay(100);
+
+  secureClient.setInsecure();
+  secureClient.setTimeout(15000);
+
   connectWiFi();
 
   Wire.begin(D2, D1);
@@ -177,23 +220,33 @@ void setup() {
   pinMode(LEVEL3, INPUT_PULLUP);
   pinMode(LEVEL4, INPUT_PULLUP);
 
+#if THINGESP_ENABLED
   thing.initDevice();
   thing.setCallback(&handleResponse);
+  Serial.println("ThingESP enabled for WhatsApp commands.");
+#else
+  Serial.println("ThingESP disabled — dashboard telemetry only.");
+#endif
 
   readSensors();
   postTelemetry();
+  postCount++;
   lastPost = millis();
   lastWhatsApp = millis();
   lastThingTick = millis();
+
+  Serial.printf("Ready. Free heap: %u bytes\n", ESP.getFreeHeap());
 }
 
 void loop() {
   unsigned long now = millis();
 
-  if (now - lastThingTick >= THING_TICK_MS) {
+#if THINGESP_ENABLED
+  if (!telemetryBusy && now - lastThingTick >= THING_TICK_MS) {
     lastThingTick = now;
     thing.Handle();
   }
+#endif
 
   if (WiFi.status() != WL_CONNECTED) {
     connectWiFi();
@@ -201,20 +254,24 @@ void loop() {
   }
 
   if (now - lastPost >= POST_INTERVAL_MS) {
-    lastPost = now;
     readSensors();
     postTelemetry();
+    postCount++;
+    lastPost = millis();
   }
 
-  if (now - lastWhatsApp >= WHATSAPP_INTERVAL_MS) {
+#if THINGESP_ENABLED
+  if (!telemetryBusy && now - lastWhatsApp >= WHATSAPP_INTERVAL_MS) {
     lastWhatsApp = now;
     thing.sendMsg(
       OWNER_PHONE_VALUE,
       "AgriSetu Report\nMoisture: " + String(soilMoisture, 1) +
       "%\nTemp: " + String(soilTemperature, 1) +
-      " C\nWater: " + waterStatus
+      " C\nWater: " + String(describeWaterLevel())
     );
   }
+#endif
 
+  yield();
   delay(10);
 }

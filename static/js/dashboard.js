@@ -338,9 +338,9 @@ function renderAdvisoryOffline() {
     </div>`;
   }
   const msg = $("#irrigation-msg");
-  if (msg) msg.textContent = "Waiting for live soil moisture…";
+  if (msg) msg.innerHTML = `<span class="irrigation-text">Waiting for live soil moisture…</span>`;
   const meta = $("#irrigation-meta");
-  if (meta) meta.textContent = "";
+  if (meta) meta.innerHTML = "";
   const score = $("#risk-score");
   if (score) score.textContent = "—";
   const level = $("#risk-level");
@@ -353,21 +353,29 @@ function renderAdvisory(bundle) {
   const list = $("#advisory-list");
   if (list) {
     const items = bundle.advisories || [];
-    list.innerHTML = items.map(a =>
-      `<div class="alert-item ${a.severity}">
+    list.innerHTML = items.map(a => {
+      const speech = `${a.title}. ${a.detail}`;
+      return `<div class="alert-item ${a.severity}">
         <span>${{warning:"⚠",info:"ℹ",danger:"🔴",success:"✅"}[a.severity]||"•"}</span>
-        <span><b>${a.title}</b> — ${a.detail}</span>
-      </div>`
-    ).join("") || `<div class="alert-item success">✅ Conditions stable</div>`;
+        <span class="alert-text"><b>${a.title}</b> — ${a.detail}</span>
+        ${window.ttsBtn ? window.ttsBtn(speech, "Listen to alert") : ""}
+      </div>`;
+    }).join("") || `<div class="alert-item success">✅ Conditions stable</div>`;
   }
 
   const irr = bundle.irrigation || {};
   const msg = $("#irrigation-msg");
-  if (msg) msg.textContent = irr.message || "—";
+  if (msg) {
+    const irrText = irr.message || "—";
+    msg.innerHTML = `<span class="irrigation-text">${irrText}</span>${window.ttsBtn ? window.ttsBtn(irrText, "Listen to irrigation advice") : ""}`;
+  }
   const meta = $("#irrigation-meta");
   if (meta) {
-    meta.textContent = irr.action
+    const metaText = irr.action
       ? `Action: ${irr.action.replace(/_/g, " ")} · Urgency: ${irr.urgency} · Next check: ${irr.next_check_hours}h · ~${irr.suggested_litres_per_m2 || 0} L/m²`
+      : "";
+    meta.innerHTML = metaText
+      ? `<span class="irrigation-meta-text">${metaText}</span>${window.ttsBtn ? window.ttsBtn(metaText, "Listen to irrigation details") : ""}`
       : "";
   }
   const box = $("#irrigation-box");
@@ -383,14 +391,20 @@ function renderAdvisory(bundle) {
 
   const bars = $("#risk-bars");
   if (bars && risks.risks) {
-    bars.innerHTML = risks.risks.map(r => `
+    bars.innerHTML = risks.risks.map(r => {
+      const speech = `${r.label}. Score ${r.score}. Level ${r.level}.`;
+      return `
       <div class="risk-row">
         <div class="risk-row-top">
           <span>${r.label}</span>
-          <span class="risk-pct level-${r.level}">${r.score}</span>
+          <span class="risk-row-actions">
+            <span class="risk-pct level-${r.level}">${r.score}</span>
+            ${window.ttsBtn ? window.ttsBtn(speech, "Listen to risk") : ""}
+          </span>
         </div>
         <div class="risk-track"><div class="risk-fill level-${r.level}" style="width:${r.score}%"></div></div>
-      </div>`).join("");
+      </div>`;
+    }).join("");
   }
 }
 
@@ -456,7 +470,7 @@ async function runVisionScan(demoProfile = null) {
 }
 
 function renderVision(v) {
-  const panel = $("#vision-panel");
+  const panel = $("#vision-panel-body");
   if (!panel || !v) return;
 
   const flag = (ok, label, conf) =>
@@ -482,19 +496,24 @@ function renderVision(v) {
     <div class="alerts-list">
       <div class="alert-item ${v.disease_detected ? "danger" : "success"}">
         <span>${v.disease_detected ? "🔴" : "✅"}</span>
-        <span>${v.disease_summary || "—"}</span>
+        <span class="alert-text">${v.disease_summary || "—"}</span>
+        ${window.ttsBtn ? window.ttsBtn(v.disease_summary || "No disease detected", "Listen to disease summary") : ""}
       </div>
       <div class="alert-item ${v.pest_detected ? "warning" : "success"}">
         <span>${v.pest_detected ? "⚠" : "✅"}</span>
-        <span>${v.pest_summary || "—"}</span>
+        <span class="alert-text">${v.pest_summary || "—"}</span>
+        ${window.ttsBtn ? window.ttsBtn(v.pest_summary || "No pest detected", "Listen to pest summary") : ""}
       </div>
       <div class="alert-item ${v.nutrient_flag ? "warning" : "info"}">
         <span>${v.nutrient_flag ? "⚠" : "ℹ"}</span>
-        <span>${v.nutrient_summary || "—"}</span>
+        <span class="alert-text">${v.nutrient_summary || "—"}</span>
+        ${window.ttsBtn ? window.ttsBtn(v.nutrient_summary || "No nutrient issues", "Listen to nutrient summary") : ""}
       </div>
     </div>
     <ul class="rec-list">
-      ${(v.recommendations || []).map(r => `<li>${r}</li>`).join("")}
+      ${(v.recommendations || []).map(r =>
+        `<li class="rec-item"><span>${r}</span>${window.ttsBtn ? window.ttsBtn(r, "Listen to recommendation") : ""}</li>`
+      ).join("")}
     </ul>`;
 }
 
@@ -1001,12 +1020,24 @@ function renderPrediction(p) {
     ? p.alerts.map(a =>
         `<div class="alert-item ${a.type}">
           <span>${{warning:"⚠",info:"ℹ",danger:"🔴",success:"✅"}[a.type]||"•"}</span>
-          <span>${a.msg}</span>
+          <span class="alert-text">${a.msg}</span>
+          ${window.ttsBtn ? window.ttsBtn(a.msg, "Listen to alert") : ""}
         </div>`
       ).join("")
     : `<div class="alert-item success">✅ All conditions look favourable!</div>`;
 
+  const noteText = p.prediction_text
+    ? `Your note: ${p.prediction_text}`
+    : "No custom note provided.";
+  const cropSpeech = window.collectPredictionSpeech
+    ? window.collectPredictionSpeech(p)
+    : `${p.recommended_crop}. Confidence ${p.confidence_pct} percent.`;
+
   panel.innerHTML = `
+    <div class="card-head" style="margin-bottom:12px;">
+      <h2 style="font-size:16px;margin:0;">Prediction Result</h2>
+      ${window.ttsBtn ? window.ttsBtn(cropSpeech, "Listen to full prediction") : ""}
+    </div>
     <div>
       <div class="gauge-wrap">
         <svg class="gauge-svg" width="110" height="110" viewBox="0 0 110 110">
@@ -1027,10 +1058,11 @@ function renderPrediction(p) {
       </div>
     </div>
     <div class="alerts-list">${alertsHTML}</div>
-    <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim)">
-      ${p.prediction_text
+    <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span>${p.prediction_text
         ? `<b style="color:var(--text)">Your note:</b> "${p.prediction_text}"`
-        : "No custom note provided."}
+        : "No custom note provided."}</span>
+      ${window.ttsBtn && p.prediction_text ? window.ttsBtn(noteText, "Listen to your note") : ""}
     </div>`;
 
   requestAnimationFrame(() => {
@@ -1110,6 +1142,27 @@ async function init() {
   const btnAdvisory = $("#btn-advisory");
   if (btnAdvisory) btnAdvisory.addEventListener("click", fetchAdvisory);
 
+  $("#btn-tts-advisory")?.addEventListener("click", () => {
+    if (window.collectAdvisorySpeech && window.playTts) {
+      window.playTts(window.collectAdvisorySpeech(window.state.advisory));
+    }
+  });
+  $("#btn-tts-risk")?.addEventListener("click", () => {
+    if (window.collectAdvisorySpeech && window.playTts) {
+      window.playTts(window.collectAdvisorySpeech(window.state.advisory));
+    }
+  });
+  $("#btn-tts-vision")?.addEventListener("click", () => {
+    if (window.collectVisionSpeech && window.playTts) {
+      window.playTts(window.collectVisionSpeech(window.state.vision));
+    }
+  });
+  $("#btn-tts-prediction")?.addEventListener("click", () => {
+    if (window.collectPredictionSpeech && window.playTts) {
+      window.playTts(window.collectPredictionSpeech(window.state.prediction));
+    }
+  });
+
   const btnVision = $("#btn-vision");
   if (btnVision) btnVision.addEventListener("click", () => runVisionScan());
 
@@ -1166,6 +1219,10 @@ async function init() {
   // First fetches
   await fetchConnectionStatus();
   await fetchSensorData();
+
+  if (typeof maybeStartProductTour === "function") {
+    maybeStartProductTour();
+  }
 
   // Polling intervals
   setInterval(fetchConnectionStatus, 5000);   // connection banner

@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from flask import (
     Flask,
+    Response,
     jsonify,
     redirect,
     render_template,
@@ -27,6 +28,7 @@ from flask import (
 
 from config import Config
 from advisory import full_advisory_bundle
+from tts_service import sanitize_tts_text, synthesize_speech
 from vision_analyzer import analyze_leaf_image, analyze_demo_profile
 from mongo_store import (
     DuplicateDevice,
@@ -168,6 +170,7 @@ def login():
                 session.clear()
                 session["user"] = user
                 session.permanent = True
+                session["fresh_login"] = True
                 return redirect(url_for("home"))
             error = "Incorrect email or password."
         except StoreUnavailable:
@@ -273,7 +276,8 @@ def rule_predict(sensor_data, preferred_crop):
 
 @app.route("/")
 def home():
-    return render_template("index.html", user=session["user"])
+    fresh_login = session.pop("fresh_login", False)
+    return render_template("index.html", user=session["user"], fresh_login=fresh_login)
 
 
 @app.route("/api/status")
@@ -554,6 +558,24 @@ def serve_report(filename):
         return "Not found", 404
     return send_file(fp, mimetype="application/pdf",
                      as_attachment=True, download_name=filename)
+
+
+@app.route("/api/tts", methods=["POST"])
+def api_tts():
+    """Generate spoken audio for dashboard text using gTTS."""
+    body = request.get_json(silent=True) or {}
+    text = sanitize_tts_text(body.get("text", ""))
+    lang = (body.get("lang") or "en").strip()[:5]
+    if not text:
+        return jsonify({"success": False, "error": "text is required"}), 400
+    try:
+        audio = synthesize_speech(text, lang=lang)
+        return Response(audio, mimetype="audio/mpeg")
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception as exc:
+        logger.error(f"TTS error: {exc}")
+        return jsonify({"success": False, "error": "Could not generate speech"}), 500
 
 
 @app.route("/health")

@@ -94,6 +94,26 @@ class AgriSetuAppTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         delete_field.assert_called_once_with("user-1", "field-1")
 
+    def test_tts_requires_login(self):
+        response = self.client.post("/api/tts", json={"text": "Hello"})
+        self.assertEqual(response.status_code, 401)
+
+    @patch("app.synthesize_speech", return_value=b"fake-mp3-bytes")
+    def test_tts_returns_audio_for_authenticated_user(self, synthesize_speech):
+        self.login_session()
+        response = self.client.post("/api/tts", json={"text": "Irrigate now"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "audio/mpeg")
+        self.assertEqual(response.data, b"fake-mp3-bytes")
+        synthesize_speech.assert_called_once_with("Irrigate now", lang="en")
+
+    @patch("app.synthesize_speech")
+    def test_tts_rejects_empty_text(self, synthesize_speech):
+        self.login_session()
+        response = self.client.post("/api/tts", json={"text": "   "})
+        self.assertEqual(response.status_code, 400)
+        synthesize_speech.assert_not_called()
+
     @patch("app.save_device_telemetry")
     def test_arduino_device_id_routes_telemetry(self, save_device_telemetry):
         app_module.ARDUINO_SECRET = "test-ingest-secret"

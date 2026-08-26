@@ -284,6 +284,7 @@ body::before {
   padding: 10px 14px; border-radius: var(--radius); font-size: 12px;
   animation: fadeUp .4s ease;
 }
+.alert-item .alert-text { flex: 1; min-width: 0; }
 .alert-item.warning { background: rgba(255,171,64,.12); border-left: 3px solid var(--amber); color: var(--amber); }
 .alert-item.info    { background: rgba(64,200,255,.10); border-left: 3px solid var(--sky);   color: var(--sky); }
 .alert-item.danger  { background: rgba(255,107,107,.12);border-left: 3px solid var(--coral); color: var(--coral); }
@@ -432,6 +433,44 @@ canvas { max-width: 100%; }
 }
 .card-head h2 {
   font-family: var(--font-head); font-size: 18px; font-weight: 800; color: #fff;
+}
+
+.card-head-actions {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+
+.btn-tts,
+.btn-tts-section {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 32px; height: 32px; padding: 0 8px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg-3); color: var(--text);
+  font-size: 14px; line-height: 1; cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+  flex-shrink: 0;
+}
+.btn-tts:hover,
+.btn-tts-section:hover {
+  border-color: var(--border-glow); color: var(--accent); background: var(--accent-dim);
+}
+.btn-tts.playing,
+.btn-tts-section.playing {
+  border-color: var(--accent); color: var(--accent);
+  box-shadow: 0 0 12px rgba(168,255,62,.25);
+}
+
+.irrigation-msg,
+.irrigation-meta {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+
+.risk-row-actions {
+  display: inline-flex; align-items: center; gap: 8px;
+}
+
+.rec-list .rec-item {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 10px;
 }
 
 .badge-edge {

@@ -22,6 +22,9 @@ reportlab==4.0.8
 # Use a recent Pillow with wheels for your Python (3.11–3.14).
 Pillow>=11.0.0
 
+# ── Text-to-Speech ─────────────────────────────────────────────────────────────
+gTTS==2.5.4
+
 # ── Environment ────────────────────────────────────────────────────────────────
 python-dotenv==1.0.0
 
