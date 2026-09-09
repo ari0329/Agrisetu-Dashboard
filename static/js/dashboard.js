@@ -387,7 +387,19 @@ function renderAdvisory(bundle) {
   const scoreEl = $("#risk-score");
   if (scoreEl) scoreEl.textContent = `${risks.yield_risk_pct ?? "—"}%`;
   const levelEl = $("#risk-level");
-  if (levelEl) levelEl.textContent = `Yield risk · ${(risks.overall_level || "").toUpperCase()}`;
+  if (levelEl) {
+    const regime = risks.predicted_regime ? ` · ${risks.predicted_regime}` : "";
+    const source = risks.prediction_source === "ml" ? "ML" : "Rules";
+    levelEl.textContent = `Yield risk · ${(risks.overall_level || "").toUpperCase()}${regime} (${source})`;
+  }
+  const riskBadge = $("#risk-model-badge");
+  if (riskBadge) {
+    const mlActive = risks.prediction_source === "ml";
+    riskBadge.style.display = mlActive ? "" : "none";
+    riskBadge.title = mlActive
+      ? `farm_risk_model.pkl · regime: ${risks.predicted_regime || "—"}`
+      : "Rule-based fallback";
+  }
 
   const bars = $("#risk-bars");
   if (bars && risks.risks) {

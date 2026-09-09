@@ -28,6 +28,7 @@ from flask import (
 
 from config import Config
 from advisory import full_advisory_bundle
+from farm_risk import is_model_available, model_load_error as farm_risk_load_error
 from tts_service import sanitize_tts_text, synthesize_speech
 from vision_analyzer import analyze_leaf_image, analyze_demo_profile
 from mongo_store import (
@@ -98,6 +99,14 @@ try:
 except Exception as e:
     model_load_error = str(e)
     logger.warning(f"Models unavailable; using rule-based fallback ({e})")
+
+farm_risk_loaded = is_model_available()
+if farm_risk_loaded:
+    logger.info("Farm risk ML model ready for advisory")
+else:
+    _farm_risk_err = farm_risk_load_error()
+    if _farm_risk_err:
+        logger.warning(f"Farm risk model unavailable ({_farm_risk_err})")
 
 FEATURE_COLUMNS = [
     "Soil_Moisture_%", "Soil_Temperature_C",
@@ -593,6 +602,8 @@ def health():
         "status":         "healthy",
         "models_loaded":  models_loaded,
         "model_load_error": model_load_error or None,
+        "farm_risk_model_loaded": is_model_available(),
+        "farm_risk_model_error": farm_risk_load_error() or None,
         "missing_model_files": missing_models,
         "mongodb_configured": bool(Config.MONGODB_URI),
         "modules": {

@@ -88,7 +88,9 @@ function collectAdvisorySpeech(bundle) {
   if (irr.message) parts.push(`Smart irrigation. ${irr.message}`);
   const risks = bundle.environmental_risks || {};
   if (risks.yield_risk_pct != null) {
-    parts.push(`Overall yield risk ${risks.yield_risk_pct} percent. Level ${risks.overall_level || "unknown"}.`);
+    const regime = risks.predicted_regime ? ` Predicted regime ${risks.predicted_regime}.` : "";
+    const source = risks.prediction_source === "ml" ? " Machine learning model." : "";
+    parts.push(`Overall yield risk ${risks.yield_risk_pct} percent. Level ${risks.overall_level || "unknown"}.${regime}${source}`);
   }
   (risks.risks || []).forEach((r) => {
     parts.push(`${r.label}. Score ${r.score}. Level ${r.level}.`);

@@ -46,6 +46,7 @@ class Config:
     MONTH_LOOKUP_PATH   = MODEL_DIR / "crop_month_lookup.pkl"
     SCALER_PATH         = MODEL_DIR / "scaler.pkl"
     MODEL_METADATA_PATH = MODEL_DIR / "model_metadata.pkl"
+    FARM_RISK_MODEL_PATH = MODEL_DIR / "farm_risk_model.pkl"
 
     # ── Directories ───────────────────────────────────────────────────────────
     REPORTS_DIR = Path(__file__).parent / "reports"

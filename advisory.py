@@ -7,6 +7,8 @@ aligned with Smart Farming Assistant requirements for Indian field conditions.
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from farm_risk import is_model_available, predict_farm_risk
+
 
 def _g(data: dict, key: str, default: float) -> float:
     v = data.get(key)
@@ -88,8 +90,14 @@ def assess_irrigation(sensor_data: dict) -> Dict[str, Any]:
 def assess_environmental_risks(sensor_data: dict) -> Dict[str, Any]:
     """
     Localized field risks: drought, flood, heat stress, disease-conducive climate.
-    Scores 0–100 (higher = more severe).
+    Uses farm_risk_model.pkl when available; falls back to rule-based scoring.
     """
+    if is_model_available():
+        try:
+            return predict_farm_risk(sensor_data)
+        except Exception:
+            pass
+
     moisture = _g(sensor_data, "soil_moisture", 50)
     water    = _g(sensor_data, "water_level", 50)
     rainfall = _g(sensor_data, "rainfall", 0)
@@ -177,6 +185,8 @@ def assess_environmental_risks(sensor_data: dict) -> Dict[str, Any]:
         "risks": risks,
         "active_risks": active,
         "yield_risk_pct": min(95, int(overall * 0.85 + (100 - moisture) * 0.1)),
+        "prediction_source": "rules",
+        "model_used": None,
         "timestamp": datetime.now().isoformat(),
     }
 
