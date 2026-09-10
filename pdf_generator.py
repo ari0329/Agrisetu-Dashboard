@@ -28,6 +28,35 @@ C_GRAY_MID    = colors.HexColor("#B7C9BB")
 C_TEXT_DARK   = colors.HexColor("#1A2B1E")
 
 
+# ── Sensor helpers ────────────────────────────────────────────────────────────
+def _sensor_float(data: dict, key: str, default: float) -> float:
+    """Return a float; use default when the key is missing or null."""
+    v = data.get(key)
+    if v is None:
+        if key == "air_temperature":
+            soil_t = data.get("soil_temperature")
+            if soil_t is not None:
+                try:
+                    return float(soil_t) + 1.5
+                except (TypeError, ValueError):
+                    pass
+        return default
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _sensor_display(data: dict, key: str, default: float, unit: str = "", fmt: str = ".1f") -> str:
+    """Format a sensor value for PDF tables; show N/A when the reading is null."""
+    if data.get(key) is None:
+        return "N/A"
+    try:
+        return f"{float(data[key]):{fmt}}{unit}"
+    except (TypeError, ValueError):
+        return "N/A"
+
+
 # ── Status helpers ────────────────────────────────────────────────────────────
 def _moisture_status(v: float) -> str:
     if v < 30:  return "Low ⚠"
@@ -75,7 +104,7 @@ def generate_pdf(sensor_data: dict,
     display_time  = ts.strftime("%d %B %Y  |  %H:%M:%S")
     prediction    = prediction or {}
     recommended   = (crop or prediction.get("recommended_crop") or "Maize").strip().title()
-    growth_months = months if months is not None else prediction.get("growth_months", 4)
+    growth_months = months if months is not None else prediction.get("growth_months") or 4
     confidence    = prediction.get("confidence_pct") or random.randint(72, 94)
     user_note     = (prediction.get("prediction_text") or "").strip()
     user_crop     = (prediction.get("user_crop") or "").strip().title()
@@ -146,25 +175,25 @@ def generate_pdf(sensor_data: dict,
     # ── Sensor readings table ──────────────────────────────────────────────────
     content.append(Paragraph("📊  REAL-TIME SENSOR READINGS", section_s))
 
-    sm   = sensor_data.get("soil_moisture",    50.0)
-    st   = sensor_data.get("soil_temperature", 25.0)
-    at   = sensor_data.get("air_temperature",  28.0)
-    hum  = sensor_data.get("humidity",         60.0)
-    rain = sensor_data.get("rainfall",        100.0)
-    lux  = sensor_data.get("light_intensity", 500.0)
-    wl   = sensor_data.get("water_level",      50.0)
-    ph   = sensor_data.get("ph",               6.5)
+    sm   = _sensor_float(sensor_data, "soil_moisture",    50.0)
+    st   = _sensor_float(sensor_data, "soil_temperature", 25.0)
+    at   = _sensor_float(sensor_data, "air_temperature",  28.0)
+    hum  = _sensor_float(sensor_data, "humidity",         60.0)
+    rain = _sensor_float(sensor_data, "rainfall",        100.0)
+    lux  = _sensor_float(sensor_data, "light_intensity", 500.0)
+    wl   = _sensor_float(sensor_data, "water_level",      50.0)
+    ph   = _sensor_float(sensor_data, "ph",               6.5)
 
     sensor_rows = [
         ["Parameter",           "Value",                    "Status"],
-        ["Soil Moisture",       f"{sm:.1f} %",              _moisture_status(sm)],
-        ["Soil Temperature",    f"{st:.1f} °C",             _temp_status(st)],
-        ["Air Temperature",     f"{at:.1f} °C",             _temp_status(at)],
-        ["Relative Humidity",   f"{hum:.1f} %",             "Normal"],
-        ["Rainfall (simulated)",f"{rain:.1f} mm",           "Normal"],
-        ["Light Intensity",     f"{lux:.0f} lux",           "Normal"],
-        ["Water Level",         f"{wl:.0f} %",              _water_status(wl)],
-        ["Soil pH",             f"{ph:.1f}",                _ph_status(ph)],
+        ["Soil Moisture",       _sensor_display(sensor_data, "soil_moisture", sm, " %"), _moisture_status(sm)],
+        ["Soil Temperature",    _sensor_display(sensor_data, "soil_temperature", st, " °C"), _temp_status(st)],
+        ["Air Temperature",     _sensor_display(sensor_data, "air_temperature", at, " °C"), _temp_status(at)],
+        ["Relative Humidity",   _sensor_display(sensor_data, "humidity", hum, " %"), "Normal" if sensor_data.get("humidity") is not None else "N/A"],
+        ["Rainfall (simulated)",_sensor_display(sensor_data, "rainfall", rain, " mm"), "Normal" if sensor_data.get("rainfall") is not None else "N/A"],
+        ["Light Intensity",     _sensor_display(sensor_data, "light_intensity", lux, " lux", ".0f"), "Normal" if sensor_data.get("light_intensity") is not None else "N/A"],
+        ["Water Level",         _sensor_display(sensor_data, "water_level", wl, " %", ".0f"), _water_status(wl)],
+        ["Soil pH",             _sensor_display(sensor_data, "ph", ph, ""), _ph_status(ph) if sensor_data.get("ph") is not None else "N/A"],
     ]
 
     st_tbl = Table(sensor_rows, colWidths=[W * 0.45, W * 0.3, W * 0.25])
