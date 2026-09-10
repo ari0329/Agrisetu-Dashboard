@@ -53,7 +53,8 @@ def _ph_status(v: float) -> str:
 # ── Main function ─────────────────────────────────────────────────────────────
 def generate_pdf(sensor_data: dict,
                  crop: str = None,
-                 months: int = None) -> tuple:
+                 months: int = None,
+                 prediction: dict = None) -> tuple:
     """
     Generate a PDF crop-prediction report.
 
@@ -72,9 +73,13 @@ def generate_pdf(sensor_data: dict,
     ts            = datetime.now()
     file_stamp    = ts.strftime("%d_%m_%Y__%H_%M_%S")
     display_time  = ts.strftime("%d %B %Y  |  %H:%M:%S")
-    recommended   = (crop or "Maize").strip().title()
-    growth_months = months if months is not None else 4
-    confidence    = random.randint(72, 94)
+    prediction    = prediction or {}
+    recommended   = (crop or prediction.get("recommended_crop") or "Maize").strip().title()
+    growth_months = months if months is not None else prediction.get("growth_months", 4)
+    confidence    = prediction.get("confidence_pct") or random.randint(72, 94)
+    user_note     = (prediction.get("prediction_text") or "").strip()
+    user_crop     = (prediction.get("user_crop") or "").strip().title()
+    explanation_sections = prediction.get("explanation_sections") or {}
 
     pdf_path = Config.REPORTS_DIR / f"AgriSetu_{file_stamp}.pdf"
 
@@ -216,6 +221,42 @@ def generate_pdf(sensor_data: dict,
         f"The estimated cultivation-to-harvest period is <b>{growth_months} months</b>."
     )
     content.append(Paragraph(summary, normal_s))
+
+    # ── User input vs recommendation ───────────────────────────────────────────
+    if user_note or user_crop or prediction.get("explanation"):
+        content.append(Paragraph("📝  YOUR INPUT & WHY THIS CROP WAS CHOSEN", section_s))
+
+        if user_note:
+            content.append(Paragraph(f'<b>Your prediction / note:</b> "{user_note}"', normal_s))
+        if user_crop:
+            pref_score = prediction.get("preferred_crop_score")
+            score_txt = f" (suitability {pref_score}%)" if pref_score is not None else ""
+            content.append(Paragraph(f"<b>Your preferred crop:</b> {user_crop}{score_txt}", normal_s))
+
+        detailed_paras = prediction.get("explanation_detailed") or []
+        if detailed_paras:
+            for para in detailed_paras:
+                content.append(Paragraph(para, normal_s))
+        elif prediction.get("explanation"):
+            content.append(Paragraph(prediction["explanation"], normal_s))
+
+        pref_reasons = explanation_sections.get("preferred_crop_reasons") or []
+        if pref_reasons and user_crop:
+            content.append(Paragraph(f"<b>Why {user_crop} may not fit:</b>", normal_s))
+            for line in pref_reasons:
+                content.append(Paragraph(f"• {line}", normal_s))
+        rec_reasons = explanation_sections.get("recommended_crop_reasons") or []
+        if rec_reasons:
+            content.append(Paragraph(f"<b>Why {recommended} is recommended:</b>", normal_s))
+            for line in rec_reasons:
+                content.append(Paragraph(f"• {line}", normal_s))
+
+        verdict = (
+            f"In summary, AgriSetu recommends <b>{recommended.upper()}</b> over "
+            f"{user_crop + ' ' if user_crop else ''}"
+            f"based on your note, preferred crop, and live sensor readings captured at {display_time}."
+        )
+        content.append(Paragraph(verdict, normal_s))
 
     # ── Agronomic tips ─────────────────────────────────────────────────────────
     content.append(Paragraph("📋  AGRONOMIC ADVISORY NOTES", section_s))

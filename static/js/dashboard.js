@@ -1041,6 +1041,18 @@ function renderPrediction(p) {
   const noteText = p.prediction_text
     ? `Your note: ${p.prediction_text}`
     : "No custom note provided.";
+  const userCropLabel = p.user_crop
+    ? p.user_crop.charAt(0).toUpperCase() + p.user_crop.slice(1)
+    : "";
+  const explanationHTML = p.explanation
+    ? `<div class="prediction-explanation">
+        <div class="prediction-explanation-title">Why this crop?</div>
+        <p class="prediction-explanation-body">${p.explanation}</p>
+        ${userCropLabel ? `<p class="prediction-explanation-meta"><b>Your preferred crop:</b> ${userCropLabel}${p.preferred_crop_score != null ? ` · suitability ${p.preferred_crop_score}%` : ""}</p>` : ""}
+        ${p.prediction_text ? `<p class="prediction-explanation-meta"><b>Your note:</b> "${p.prediction_text}"</p>` : ""}
+        ${window.ttsBtn ? window.ttsBtn(p.explanation, "Listen to explanation") : ""}
+      </div>`
+    : "";
   const cropSpeech = window.collectPredictionSpeech
     ? window.collectPredictionSpeech(p)
     : `${p.recommended_crop}. Confidence ${p.confidence_pct} percent.`;
@@ -1069,13 +1081,8 @@ function renderPrediction(p) {
         </div>
       </div>
     </div>
-    <div class="alerts-list">${alertsHTML}</div>
-    <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <span>${p.prediction_text
-        ? `<b style="color:var(--text)">Your note:</b> "${p.prediction_text}"`
-        : "No custom note provided."}</span>
-      ${window.ttsBtn && p.prediction_text ? window.ttsBtn(noteText, "Listen to your note") : ""}
-    </div>`;
+    ${explanationHTML}
+    <div class="alerts-list">${alertsHTML}</div>`;
 
   requestAnimationFrame(() => {
     const arc = $("#gauge-arc");

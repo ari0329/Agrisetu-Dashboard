@@ -29,6 +29,7 @@ from flask import (
 from config import Config
 from advisory import full_advisory_bundle
 from farm_risk import is_model_available, model_load_error as farm_risk_load_error
+from prediction_explanation import build_prediction_explanation
 from tts_service import sanitize_tts_text, synthesize_speech
 from vision_analyzer import analyze_leaf_image, analyze_demo_profile
 from mongo_store import (
@@ -377,6 +378,9 @@ def api_predict():
             engine = "Rule-based (ML models not loaded)"
 
         advisory = full_advisory_bundle(sensor_data)
+        explanation = build_prediction_explanation(
+            sensor_data, rec, preferred, pred_text,
+        )
         prediction = {
             "recommended_crop": rec,
             "growth_months":    months,
@@ -384,6 +388,12 @@ def api_predict():
             "confidence_pct":   int(conf * 100),
             "prediction_text":  pred_text,
             "user_crop":        preferred,
+            "explanation":      explanation["explanation"],
+            "explanation_html": explanation["explanation_html"],
+            "explanation_detailed": explanation["explanation_detailed"],
+            "explanation_sections": explanation["explanation_sections"],
+            "preferred_crop_suitable": explanation["preferred_crop_suitable"],
+            "preferred_crop_score": explanation["preferred_crop_score"],
             "alerts":           advisory["alerts"],
             "advisory":         advisory,
             "model_used":       engine,
@@ -548,6 +558,7 @@ def api_report():
             sensor_data,
             prediction.get("recommended_crop", "Unknown"),
             prediction.get("growth_months", 0),
+            prediction=prediction,
         )
         filename = Path(pdf_path).name
         return jsonify({"success": True,

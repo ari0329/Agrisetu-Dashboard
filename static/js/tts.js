@@ -117,8 +117,12 @@ function collectPredictionSpeech(p) {
     `Confidence ${p.confidence_pct} percent.`,
     `Growth period ${p.growth_months} months.`,
   ];
+  if (p.user_crop) {
+    parts.push(`Your preferred crop was ${p.user_crop}.`);
+  }
+  if (p.explanation) parts.push(p.explanation);
   (p.alerts || []).forEach((a) => parts.push(a.msg));
-  if (p.prediction_text) parts.push(`Your note: ${p.prediction_text}`);
+  if (p.prediction_text && !p.explanation) parts.push(`Your note: ${p.prediction_text}`);
   return parts.join(" ");
 }
 
