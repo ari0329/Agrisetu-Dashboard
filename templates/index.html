@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ user.preferred_language|default('en') }}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,9 +10,11 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.js.iife.js" defer></script>
+  <script>window.AGRISETU_LANG = {{ user.preferred_language|default('en')|tojson }};</script>
+  <script>window.AGRISETU_FRESH_LOGIN = {{ fresh_login|tojson }};</script>
+  <script src="{{ url_for('static', filename='js/i18n.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/tts.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/tour.js') }}" defer></script>
-  <script>window.AGRISETU_FRESH_LOGIN = {{ fresh_login|tojson }};</script>
   <script src="{{ url_for('static', filename='js/dashboard.js') }}" defer></script>
 </head>
 <body>
@@ -25,27 +27,39 @@
         <div class="logo-icon">🌱</div>
         <div>
           AGRISETU
-          <div class="logo-sub">Edge AI · Crop Health · Smart Irrigation</div>
+          <div class="logo-sub" data-i18n="ui.logo_sub">Edge AI · Crop Health · Smart Irrigation</div>
         </div>
       </div>
       <div class="header-right">
         <div class="field-select-wrap">
-          <label class="form-label" for="field-id" style="margin:0;">Field</label>
+          <label class="form-label" for="field-id" style="margin:0;" data-i18n="ui.field">Field</label>
           <select class="form-select field-select" id="field-id">
-            <option value="">Loading fields…</option>
+            <option value="" data-i18n="ui.loading_fields">Loading fields…</option>
           </select>
-          <button class="btn btn-outline btn-sm" id="btn-add-field" type="button">+ Field</button>
-          <button class="btn btn-outline btn-sm" id="btn-manage-fields" type="button">Manage</button>
+          <button class="btn btn-outline btn-sm" id="btn-add-field" type="button" data-i18n="ui.add_field">+ Field</button>
+          <button class="btn btn-outline btn-sm" id="btn-manage-fields" type="button" data-i18n="ui.manage">Manage</button>
         </div>
         <div class="live-badge">
           <span class="pulse-dot"></span>
-          LIVE SENSORS
+          <span data-i18n="ui.live_sensors">LIVE SENSORS</span>
         </div>
         <div class="clock" id="clock">00:00:00</div>
         <div class="user-menu">
+          <div class="lang-select-wrap">
+            <label class="form-label lang-label" for="lang-select" data-i18n="ui.language">Language</label>
+            <select class="form-select lang-select" id="lang-select" aria-label="Preferred language">
+              <option value="en">English</option>
+              <option value="hi">हिन्दी</option>
+              <option value="bn">বাংলা</option>
+              <option value="ta">தமிழ்</option>
+              <option value="mr">मराठी</option>
+              <option value="te">తెలుగు</option>
+              <option value="kn">ಕನ್ನಡ</option>
+            </select>
+          </div>
           <span>{{ user.name }}</span>
           <form method="post" action="{{ url_for('logout') }}">
-            <button class="btn btn-outline btn-sm" type="submit">Log out</button>
+            <button class="btn btn-outline btn-sm" type="submit" data-i18n="ui.logout">Log out</button>
           </form>
         </div>
       </div>
@@ -56,31 +70,31 @@
 <dialog class="field-dialog" id="field-dialog">
   <form class="glass-card field-dialog-card" id="field-form">
     <div class="card-head">
-      <h2 id="field-dialog-title">Add a field</h2>
-      <button class="dialog-close" id="btn-close-field" type="button" aria-label="Close">×</button>
+      <h2 id="field-dialog-title" data-i18n="ui.field_dialog_add_title">Add a field</h2>
+      <button class="dialog-close" id="btn-close-field" type="button" data-i18n-aria="ui.close" aria-label="Close">×</button>
     </div>
-    <p class="dialog-copy" id="field-dialog-copy">
+    <p class="dialog-copy" id="field-dialog-copy" data-i18n="ui.field_dialog_add_copy">
       Enter the exact Device ID configured in the ESP8266 sketch. It is used once
       to securely pair incoming readings with this field.
     </p>
     <div class="auth-error field-form-error hidden" id="field-form-error" role="alert"></div>
     <input type="hidden" id="field-edit-id" value="" />
     <div class="form-group">
-      <label class="form-label" for="field-name">Field name</label>
+      <label class="form-label" for="field-name" data-i18n="ui.field_name">Field name</label>
       <input class="form-input" id="field-name" maxlength="80"
-             placeholder="e.g. North Field" required />
+             data-i18n-placeholder="ui.field_name_placeholder" placeholder="e.g. North Field" required />
     </div>
     <div class="form-group">
-      <label class="form-label" for="field-device-id">Device ID / secret code</label>
+      <label class="form-label" for="field-device-id" data-i18n="ui.device_id">Device ID / secret code</label>
       <input class="form-input" id="field-device-id" type="password"
              minlength="6" maxlength="128" autocomplete="off" />
-      <p class="field-hint hidden" id="field-device-hint">
+      <p class="field-hint hidden" id="field-device-hint" data-i18n="ui.device_hint">
         Leave blank to keep the current Device ID.
       </p>
     </div>
     <div class="btn-row">
-      <button class="btn btn-primary" id="btn-save-field" type="submit">Pair field</button>
-      <button class="btn btn-outline" id="btn-cancel-field" type="button">Cancel</button>
+      <button class="btn btn-primary" id="btn-save-field" type="submit" data-i18n="ui.pair_field">Pair field</button>
+      <button class="btn btn-outline" id="btn-cancel-field" type="button" data-i18n="ui.cancel">Cancel</button>
     </div>
   </form>
 </dialog>
@@ -88,16 +102,16 @@
 <dialog class="field-dialog" id="fields-manage-dialog">
   <div class="glass-card field-dialog-card">
     <div class="card-head">
-      <h2>Manage fields</h2>
-      <button class="dialog-close" id="btn-close-manage-fields" type="button" aria-label="Close">×</button>
+      <h2 data-i18n="ui.manage_fields_title">Manage fields</h2>
+      <button class="dialog-close" id="btn-close-manage-fields" type="button" data-i18n-aria="ui.close" aria-label="Close">×</button>
     </div>
-    <p class="dialog-copy">Edit names, update Device IDs, or remove paired fields.</p>
+    <p class="dialog-copy" data-i18n="ui.manage_fields_copy">Edit names, update Device IDs, or remove paired fields.</p>
     <div class="field-list" id="field-list">
-      <p class="field-list-empty">No fields yet. Add one with + Field.</p>
+      <p class="field-list-empty" data-i18n="ui.no_fields_hint">No fields yet. Add one with + Field.</p>
     </div>
     <div class="btn-row">
-      <button class="btn btn-outline" id="btn-manage-add-field" type="button">+ Add field</button>
-      <button class="btn btn-outline" id="btn-close-manage-fields-bottom" type="button">Close</button>
+      <button class="btn btn-outline" id="btn-manage-add-field" type="button" data-i18n="ui.manage_add_field">+ Add field</button>
+      <button class="btn btn-outline" id="btn-close-manage-fields-bottom" type="button" data-i18n="ui.close">Close</button>
     </div>
   </div>
 </dialog>
@@ -108,31 +122,31 @@
   <!-- ── Arduino Connection Banner ──────────────────────────── -->
   <div class="connection-banner offline" id="connection-banner">
     <span class="banner-dot offline" id="banner-dot"></span>
-    <span id="banner-text">Connecting to Arduino…</span>
+    <span id="banner-text" data-i18n="ui.connecting_arduino">Connecting to Arduino…</span>
   </div>
 
   <!-- ── Sensor Grid ───────────────────────────────────────── -->
-  <p class="section-label">Real-Time Sensor Readings</p>
+  <p class="section-label" data-i18n="ui.section_sensors">Real-Time Sensor Readings</p>
 
   <div class="sensor-grid">
 
     <!-- Real sensors on the Arduino -->
     <div class="sensor-card" id="card-sm" data-icon="💧">
-      <div class="sensor-label">Soil Moisture</div>
+      <div class="sensor-label" data-i18n="ui.sensor_soil_moisture">Soil Moisture</div>
       <div class="sensor-value" id="val-sm">—</div>
       <div class="sensor-unit">%</div>
       <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-sm" style="width:0%"></div></div>
     </div>
 
     <div class="sensor-card amber" id="card-st" data-icon="🌡">
-      <div class="sensor-label">Soil Temp</div>
+      <div class="sensor-label" data-i18n="ui.sensor_soil_temp">Soil Temp</div>
       <div class="sensor-value" id="val-st">—</div>
       <div class="sensor-unit">°C</div>
       <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-st" style="width:0%"></div></div>
     </div>
 
     <div class="sensor-card sky" id="card-wl" data-icon="🪣">
-      <div class="sensor-label">Water Level</div>
+      <div class="sensor-label" data-i18n="ui.sensor_water_level">Water Level</div>
       <div class="sensor-value" id="val-wl">—</div>
       <div class="sensor-unit">%</div>
       <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-wl" style="width:0%"></div></div>
@@ -140,101 +154,101 @@
 
     <!-- Sensors NOT on this Arduino — labelled clearly -->
     <div class="sensor-card amber" id="card-at" data-icon="☀">
-      <div class="sensor-label">Air Temp</div>
+      <div class="sensor-label" data-i18n="ui.sensor_air_temp">Air Temp</div>
       <div class="sensor-value" id="val-at" style="font-size:16px;color:var(--text-dim)">N/A</div>
-      <div class="sensor-unit" style="font-size:10px;">not on device</div>
+      <div class="sensor-unit" style="font-size:10px;" data-i18n="ui.not_on_device">not on device</div>
       <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-at" style="width:0%"></div></div>
     </div>
 
     <div class="sensor-card" id="card-hum" data-icon="🌫">
-      <div class="sensor-label">Humidity</div>
+      <div class="sensor-label" data-i18n="ui.sensor_humidity">Humidity</div>
       <div class="sensor-value" id="val-hum" style="font-size:16px;color:var(--text-dim)">N/A</div>
-      <div class="sensor-unit" style="font-size:10px;">not on device</div>
+      <div class="sensor-unit" style="font-size:10px;" data-i18n="ui.not_on_device">not on device</div>
       <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-hum" style="width:0%"></div></div>
     </div>
 
     <div class="sensor-card sky" id="card-rain" data-icon="🌧">
-      <div class="sensor-label">Rainfall</div>
+      <div class="sensor-label" data-i18n="ui.sensor_rainfall">Rainfall</div>
       <div class="sensor-value" id="val-rain" style="font-size:16px;color:var(--text-dim)">N/A</div>
-      <div class="sensor-unit" style="font-size:10px;">not on device</div>
+      <div class="sensor-unit" style="font-size:10px;" data-i18n="ui.not_on_device">not on device</div>
       <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-rain" style="width:0%"></div></div>
     </div>
 
     <div class="sensor-card amber" id="card-lux" data-icon="🔆">
-      <div class="sensor-label">Light Intensity</div>
+      <div class="sensor-label" data-i18n="ui.sensor_light">Light Intensity</div>
       <div class="sensor-value" id="val-lux" style="font-size:16px;color:var(--text-dim)">N/A</div>
-      <div class="sensor-unit" style="font-size:10px;">not on device</div>
+      <div class="sensor-unit" style="font-size:10px;" data-i18n="ui.not_on_device">not on device</div>
       <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-lux" style="width:0%"></div></div>
     </div>
 
     <div class="sensor-card" id="card-ph" data-icon="⚗">
-      <div class="sensor-label">Soil pH</div>
+      <div class="sensor-label" data-i18n="ui.sensor_ph">Soil pH</div>
       <div class="sensor-value" id="val-ph" style="font-size:16px;color:var(--text-dim)">N/A</div>
-      <div class="sensor-unit" style="font-size:10px;">not on device</div>
+      <div class="sensor-unit" style="font-size:10px;" data-i18n="ui.not_on_device">not on device</div>
       <div class="sensor-bar"><div class="sensor-bar-fill" id="bar-ph" style="width:0%"></div></div>
     </div>
 
   </div>
 
   <!-- ── Farmer Advisory + Environmental Risk ──────────────── -->
-  <p class="section-label">Farmer Advisory System</p>
+  <p class="section-label" data-i18n="ui.section_advisory">Farmer Advisory System</p>
   <div class="assist-grid">
     <div class="glass-card">
       <div class="card-head">
-        <h2>Actionable Alerts</h2>
+        <h2 data-i18n="ui.actionable_alerts">Actionable Alerts</h2>
         <div class="card-head-actions">
-          <button class="btn btn-outline btn-sm btn-tts-section" id="btn-tts-advisory" type="button" title="Listen to all alerts">🔊</button>
-          <button class="btn btn-outline btn-sm" id="btn-advisory" type="button">Refresh Advice</button>
+          <button class="btn btn-outline btn-sm btn-tts-section" id="btn-tts-advisory" type="button" data-i18n-title="ui.listen_alerts" title="Listen to all alerts">🔊</button>
+          <button class="btn btn-outline btn-sm" id="btn-advisory" type="button" data-i18n="ui.refresh_advice">Refresh Advice</button>
         </div>
       </div>
       <div id="advisory-list" class="alerts-list">
-        <div class="no-result" style="padding:20px;">
+        <div class="no-result" style="padding:20px;" data-i18n="ui.advisory_placeholder">
           Connect Arduino or click Refresh to load irrigation, heat, flood, and crop alerts.
         </div>
       </div>
       <div class="irrigation-box" id="irrigation-box">
-        <div class="mini-stat-label">SMART IRRIGATION</div>
-        <div id="irrigation-msg" class="irrigation-msg">Waiting for sensor data…</div>
+        <div class="mini-stat-label" data-i18n="ui.smart_irrigation">SMART IRRIGATION</div>
+        <div id="irrigation-msg" class="irrigation-msg" data-i18n="ui.waiting_sensors">Waiting for sensor data…</div>
         <div class="irrigation-meta" id="irrigation-meta"></div>
       </div>
     </div>
 
     <div class="glass-card">
       <div class="card-head">
-        <h2>Environmental Risk Monitor</h2>
+        <h2 data-i18n="ui.env_risk">Environmental Risk Monitor</h2>
         <div class="card-head-actions">
-          <button class="btn btn-outline btn-sm btn-tts-section" id="btn-tts-risk" type="button" title="Listen to risk summary">🔊</button>
+          <button class="btn btn-outline btn-sm btn-tts-section" id="btn-tts-risk" type="button" data-i18n-title="ui.listen_risk" title="Listen to risk summary">🔊</button>
           <span class="badge-edge" id="risk-model-badge" title="farm_risk_model.pkl">ML</span>
         </div>
       </div>
       <div class="risk-overall" id="risk-overall">
         <span class="risk-score" id="risk-score">—</span>
-        <span class="risk-level" id="risk-level">Yield risk</span>
+        <span class="risk-level" id="risk-level" data-i18n="ui.yield_risk">Yield risk</span>
       </div>
       <div class="risk-bars" id="risk-bars"></div>
     </div>
   </div>
 
   <!-- ── Crop Health Vision ─────────────────────────────────── -->
-  <p class="section-label">Crop Health · Pest · Nutrient (Edge Vision)</p>
+  <p class="section-label" data-i18n="ui.section_vision">Crop Health · Pest · Nutrient (Edge Vision)</p>
   <div class="assist-grid">
     <div class="glass-card">
       <div class="card-head">
-        <h2>Leaf / Plant Image Scan</h2>
-        <span class="badge-edge">ON-DEVICE</span>
+        <h2 data-i18n="ui.leaf_scan">Leaf / Plant Image Scan</h2>
+        <span class="badge-edge" data-i18n="ui.on_device">ON-DEVICE</span>
       </div>
-      <p style="font-size:13px;color:var(--text-dim);margin-bottom:14px;">
+      <p style="font-size:13px;color:var(--text-dim);margin-bottom:14px;" data-i18n="ui.vision_intro">
         Upload a leaf photo to detect disease spots, pest damage, and nutrient deficiency signs — processed locally, no cloud CV required.
       </p>
       <div class="form-group">
-        <label class="form-label" for="leaf-image">Leaf image</label>
+        <label class="form-label" for="leaf-image" data-i18n="ui.leaf_image">Leaf image</label>
         <input class="form-input" type="file" id="leaf-image" accept="image/*" capture="environment" />
       </div>
       <div class="btn-row">
-        <button class="btn btn-primary" id="btn-vision" type="button">Scan Leaf</button>
-        <button class="btn btn-outline" id="btn-demo-disease" type="button">Demo: Disease</button>
-        <button class="btn btn-outline" id="btn-demo-pest" type="button">Demo: Pest</button>
-        <button class="btn btn-outline" id="btn-demo-nutrient" type="button">Demo: Nutrient</button>
+        <button class="btn btn-primary" id="btn-vision" type="button" data-i18n="ui.scan_leaf">Scan Leaf</button>
+        <button class="btn btn-outline" id="btn-demo-disease" type="button" data-i18n="ui.demo_disease">Demo: Disease</button>
+        <button class="btn btn-outline" id="btn-demo-pest" type="button" data-i18n="ui.demo_pest">Demo: Pest</button>
+        <button class="btn btn-outline" id="btn-demo-nutrient" type="button" data-i18n="ui.demo_nutrient">Demo: Nutrient</button>
       </div>
       <div id="vision-preview-wrap" class="vision-preview-wrap hidden">
         <img id="vision-preview" alt="Leaf preview" />
@@ -243,14 +257,14 @@
 
     <div class="glass-card result-panel" id="vision-panel">
       <div class="card-head">
-        <h2 style="font-size:16px;">Scan Results</h2>
-        <button class="btn btn-outline btn-sm btn-tts-section" id="btn-tts-vision" type="button" title="Listen to vision results">🔊</button>
+        <h2 style="font-size:16px;" data-i18n="ui.scan_results">Scan Results</h2>
+        <button class="btn btn-outline btn-sm btn-tts-section" id="btn-tts-vision" type="button" data-i18n-title="ui.listen_vision" title="Listen to vision results">🔊</button>
       </div>
       <div id="vision-panel-body">
       <div class="no-result">
         <span class="no-result-icon">🍃</span>
-        Upload a leaf image or run a demo scan.<br>
-        <span style="font-size:10px;margin-top:8px;display:block;">
+        <span data-i18n="ui.vision_placeholder">Upload a leaf image or run a demo scan.</span><br>
+        <span style="font-size:10px;margin-top:8px;display:block;" data-i18n="ui.vision_placeholder_sub">
           Results include disease, pest, and nutrient flags with farmer recommendations.
         </span>
       </div>
@@ -259,29 +273,30 @@
   </div>
 
   <!-- ── Main Panel ───────────────────────────────────────── -->
-  <p class="section-label">Crop Prediction Engine</p>
+  <p class="section-label" data-i18n="ui.section_prediction">Crop Prediction Engine</p>
 
   <div class="main-panel">
 
     <!-- Form card -->
     <div class="glass-card">
       <div style="margin-bottom:22px;">
-        <h2 style="font-family:var(--font-head);font-size:20px;font-weight:800;color:#fff;margin-bottom:4px;">
+        <h2 style="font-family:var(--font-head);font-size:20px;font-weight:800;color:#fff;margin-bottom:4px;" data-i18n="ui.predict_crop">
           Predict Your Crop
         </h2>
-        <p style="font-size:13px;color:var(--text-dim);">
+        <p style="font-size:13px;color:var(--text-dim);" data-i18n="ui.predict_intro">
           Enter your conditions and let the ML engine recommend the best crop.
         </p>
       </div>
 
       <div class="form-group">
-        <label class="form-label" for="pred-text">Your Prediction / Note</label>
+        <label class="form-label" for="pred-text" data-i18n="ui.pred_note">Your Prediction / Note</label>
         <textarea class="form-textarea" id="pred-text"
+          data-i18n-placeholder="ui.pred_placeholder"
           placeholder="e.g. Expecting high rainfall next week, low moisture possible…"></textarea>
       </div>
 
       <div class="form-group">
-        <label class="form-label" for="crop-select">Preferred Crop (optional)</label>
+        <label class="form-label" for="crop-select" data-i18n="ui.preferred_crop">Preferred Crop (optional)</label>
         <select class="form-select" id="crop-select">
           <option value="">— Let AI decide —</option>
           <option value="wheat">🌾 Wheat</option>
@@ -301,22 +316,23 @@
       <div style="background:var(--bg-3);border:1px solid var(--border);border-radius:var(--radius);
                   padding:14px 16px;margin-bottom:20px;font-family:var(--font-mono);font-size:11px;
                   color:var(--text-dim);line-height:2;">
-        <span style="color:var(--accent);font-weight:600;">Current Sensor Input</span><br>
-        Moisture: <span id="sum-sm" style="color:#fff">—</span> % &nbsp;|&nbsp;
-        Soil Temp: <span id="sum-st" style="color:#fff">—</span> °C &nbsp;|&nbsp;
-        Humidity: <span id="sum-hum" style="color:#fff">N/A</span>
+        <span style="color:var(--accent);font-weight:600;" data-i18n="ui.current_sensor_input">Current Sensor Input</span><br>
+        <span data-i18n="ui.moisture_label">Moisture</span>: <span id="sum-sm" style="color:#fff">—</span> % &nbsp;|&nbsp;
+        <span data-i18n="ui.soil_temp_label">Soil Temp</span>: <span id="sum-st" style="color:#fff">—</span> °C &nbsp;|&nbsp;
+        <span data-i18n="ui.humidity_label">Humidity</span>: <span id="sum-hum" style="color:#fff">N/A</span>
       </div>
 
       <div class="btn-row">
-        <!-- Buttons start disabled — enabled when Arduino connects -->
         <button class="btn btn-primary" id="btn-predict" disabled
+                data-i18n-title="ui.predict_offline_title"
                 title="Arduino must be online to predict">
-          🌾 Predict
+          <span data-i18n="ui.predict_btn">🌾 Predict</span>
         </button>
-        <button class="btn btn-outline btn-sm btn-tts-section" id="btn-tts-prediction" type="button" title="Listen to prediction result">🔊</button>
+        <button class="btn btn-outline btn-sm btn-tts-section" id="btn-tts-prediction" type="button" data-i18n-title="ui.listen_prediction" title="Listen to prediction result">🔊</button>
         <button class="btn btn-secondary" id="btn-report" disabled
+                data-i18n-title="ui.report_offline_title"
                 title="Arduino must be online to generate report">
-          📄 Download Report
+          <span data-i18n="ui.download_report">📄 Download Report</span>
         </button>
       </div>
     </div>
@@ -325,9 +341,9 @@
     <div class="glass-card result-panel" id="result-panel">
       <div class="no-result">
         <span class="no-result-icon">🌱</span>
-        Waiting for Arduino connection…<br>
-        <span style="font-size:10px;margin-top:8px;display:block;">
-          Once online, fill the form and click <b>Predict</b>
+        <span data-i18n="ui.waiting_arduino">Waiting for Arduino connection…</span><br>
+        <span style="font-size:10px;margin-top:8px;display:block;" data-i18n="ui.waiting_arduino_sub">
+          Once online, fill the form and click Predict
         </span>
       </div>
     </div>
@@ -335,44 +351,44 @@
   </div>
 
   <!-- ── Chart Section ─────────────────────────────────────── -->
-  <p class="section-label">Live Sensor History</p>
+  <p class="section-label" data-i18n="ui.section_chart">Live Sensor History</p>
 
   <div class="chart-section">
 
     <div class="chart-card">
-      <div class="chart-title">Soil Moisture &amp; Temperature Over Time</div>
+      <div class="chart-title" data-i18n="ui.chart_moisture_temp">Soil Moisture &amp; Temperature Over Time</div>
       <canvas id="liveChart" height="220"></canvas>
     </div>
 
     <div class="chart-card">
-      <div class="chart-title" style="margin-bottom:20px;">Quick Stats</div>
+      <div class="chart-title" style="margin-bottom:20px;" data-i18n="ui.quick_stats">Quick Stats</div>
       <div class="mini-stats">
 
         <div class="mini-stat">
-          <div class="mini-stat-label">SOIL MOISTURE</div>
+          <div class="mini-stat-label" data-i18n="ui.mini_soil_moisture">SOIL MOISTURE</div>
           <div class="mini-stat-value" id="mini-sm-val">
             — <span class="mini-stat-unit">%</span>
           </div>
         </div>
 
         <div class="mini-stat">
-          <div class="mini-stat-label">AIR TEMPERATURE</div>
+          <div class="mini-stat-label" data-i18n="ui.mini_air_temp">AIR TEMPERATURE</div>
           <div class="mini-stat-value" id="mini-at-val">
             N/A <span class="mini-stat-unit">°C</span>
           </div>
         </div>
 
         <div class="mini-stat">
-          <div class="mini-stat-label">HUMIDITY</div>
+          <div class="mini-stat-label" data-i18n="ui.mini_humidity">HUMIDITY</div>
           <div class="mini-stat-value" id="mini-hum-val">
             N/A <span class="mini-stat-unit">%</span>
           </div>
         </div>
 
         <div class="mini-stat" style="background:var(--accent-dim);border-color:var(--border-glow);">
-          <div class="mini-stat-label" style="color:var(--accent);">DATA SOURCE</div>
+          <div class="mini-stat-label" style="color:var(--accent);" data-i18n="ui.data_source">DATA SOURCE</div>
           <div style="font-family:var(--font-mono);font-size:13px;color:var(--accent);font-weight:600;"
-               id="data-source">Connecting…</div>
+               id="data-source" data-i18n="ui.connecting">Connecting…</div>
         </div>
 
       </div>
@@ -381,33 +397,33 @@
   </div>
 
   <!-- ── Farm Analytics ─────────────────────────────────────── -->
-  <p class="section-label">Farm Analytics Dashboard</p>
+  <p class="section-label" data-i18n="ui.section_analytics">Farm Analytics Dashboard</p>
   <div class="chart-section analytics-section">
     <div class="chart-card">
-      <div class="chart-title">Yield Risk &amp; Moisture Trend</div>
+      <div class="chart-title" data-i18n="ui.analytics_yield_moisture">Yield Risk &amp; Moisture Trend</div>
       <canvas id="analyticsChart" height="220"></canvas>
     </div>
     <div class="chart-card">
-      <div class="chart-title" style="margin-bottom:20px;">Field Performance</div>
+      <div class="chart-title" style="margin-bottom:20px;" data-i18n="ui.field_performance">Field Performance</div>
       <div class="mini-stats" id="analytics-stats">
         <div class="mini-stat">
-          <div class="mini-stat-label">AVG MOISTURE</div>
+          <div class="mini-stat-label" data-i18n="ui.avg_moisture">AVG MOISTURE</div>
           <div class="mini-stat-value" id="an-moist">— <span class="mini-stat-unit">%</span></div>
         </div>
         <div class="mini-stat">
-          <div class="mini-stat-label">AVG YIELD RISK</div>
+          <div class="mini-stat-label" data-i18n="ui.avg_yield_risk">AVG YIELD RISK</div>
           <div class="mini-stat-value" id="an-risk">— <span class="mini-stat-unit">%</span></div>
         </div>
         <div class="mini-stat">
-          <div class="mini-stat-label">DISEASE EVENTS</div>
+          <div class="mini-stat-label" data-i18n="ui.disease_events">DISEASE EVENTS</div>
           <div class="mini-stat-value" id="an-disease">—</div>
         </div>
         <div class="mini-stat">
-          <div class="mini-stat-label">PEST EVENTS</div>
+          <div class="mini-stat-label" data-i18n="ui.pest_events">PEST EVENTS</div>
           <div class="mini-stat-value" id="an-pest">—</div>
         </div>
         <div class="mini-stat" style="background:var(--accent-dim);border-color:var(--border-glow);">
-          <div class="mini-stat-label" style="color:var(--accent);">IRRIGATE-NOW COUNT</div>
+          <div class="mini-stat-label" style="color:var(--accent);" data-i18n="ui.irrigate_now_count">IRRIGATE-NOW COUNT</div>
           <div class="mini-stat-value" id="an-irrigate" style="color:var(--accent);">—</div>
         </div>
       </div>
@@ -419,7 +435,7 @@
 <!-- ══════════════════ FOOTER ══════════════════ -->
 <footer>
   <div class="page-wrapper">
-    <div class="site-footer">
+    <div class="site-footer" data-i18n="ui.footer">
       AgriSetu Smart Farming Assistant &nbsp;·&nbsp;
       Edge AI crop health · irrigation · risk alerts &nbsp;·&nbsp;
       Polls every 5 seconds

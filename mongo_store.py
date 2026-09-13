@@ -23,6 +23,15 @@ class DuplicateDevice(ValueError):
     pass
 
 
+DEFAULT_LANGUAGE = "en"
+SUPPORTED_LANGUAGES = frozenset({"en", "hi", "ta", "mr", "te", "kn", "bn"})
+
+
+def normalize_language(lang: str) -> str:
+    code = (lang or DEFAULT_LANGUAGE).strip().lower()[:5]
+    return code if code in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
+
+
 _client: Optional[MongoClient] = None
 _db = None
 _indexes_ready = False
@@ -62,7 +71,27 @@ def _public_user(user: dict) -> dict:
         "id": str(user["_id"]),
         "name": user.get("name") or user.get("email", "").split("@", 1)[0],
         "email": user.get("email", ""),
+        "preferred_language": normalize_language(user.get("preferred_language")),
     }
+
+
+def update_user_language(user_id: str, lang: str) -> Optional[dict]:
+    """Persist the user's preferred dashboard language."""
+    try:
+        oid = ObjectId(user_id)
+    except Exception:
+        return None
+
+    normalized = normalize_language(lang)
+    users = _database()[Config.MONGODB_USERS_COLLECTION]
+    user = users.find_one_and_update(
+        {"_id": oid},
+        {"$set": {"preferred_language": normalized}},
+        return_document=True,
+    )
+    if not user:
+        return None
+    return _public_user(user)
 
 
 def authenticate_user(email: str, password: str) -> Optional[dict]:

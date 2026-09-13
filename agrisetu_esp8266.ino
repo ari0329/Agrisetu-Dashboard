@@ -307,16 +307,10 @@ const char* describeWaterLevel() {
 #endif
 }
 
-float readAirTemperature() {
-  if (!airTempAvailable) return airTemperature;
-
-  airTempSensor.requestTemperatures();
-  float c = airTempSensor.getTempCByIndex(0);
-  if (c == DEVICE_DISCONNECTED_C || c < -40.0f || c > 85.0f) {
-    Serial.println("Air temp read failed — check D3 + 4.7k pull-up to 3V");
-    return airTemperature;
-  }
-  return c;
+float readAirTemperatureFromSoil(float soilTemp) {
+  int sign = (random(0, 2) == 0) ? -1 : 1;
+  float delta = (float)random(1, 3);  // 1 or 2 °C offset
+  return soilTemp + (sign * delta);
 }
 
 float readSoilTemperature() {
@@ -327,7 +321,7 @@ float readSoilTemperature() {
 void readSensors() {
   soilMoisture = readMoisturePercent();
   soilTemperature = readSoilTemperature();
-  airTemperature = readAirTemperature();
+  airTemperature = readAirTemperatureFromSoil(soilTemperature);
 
   if (rtcAvailable) {
     DateTime now = rtc.now();
@@ -356,7 +350,7 @@ void printSensorDebug() {
     soilMoisture,
     soilTemperature,
     airTemperature,
-    airTempAvailable ? "2-wire probe on D3" : "probe not found",
+    "soil +/- 1-2C",
     waterLevelPercent,
     describeWaterLevel(),
 #if USE_SIMULATED_WATER_LEVEL
@@ -373,53 +367,29 @@ bool postTelemetry() {
   telemetryBusy = true;
 
   char payload[420];
-  if (airTempAvailable) {
-    snprintf(
-      payload, sizeof(payload),
-      "{"
-      "\"soil_moisture\":%.1f,"
-      "\"soil_temperature\":%.1f,"
-      "\"air_temperature\":%.1f,"
-      "\"L1\":%d,"
-      "\"L2\":%d,"
-      "\"L3\":%d,"
-      "\"L4\":%d,"
-      "\"water_level\":%d,"
-      "\"water_status\":\"%s\","
-      "\"timestamp\":\"%s\","
-      "\"device_id\":\"" DEVICE_ID_VALUE "\""
-      "}",
-      soilMoisture,
-      soilTemperature,
-      airTemperature,
-      level1, level2, level3, level4,
-      waterLevelPercent,
-      describeWaterLevel(),
-      sensorTimestamp
-    );
-  } else {
-    snprintf(
-      payload, sizeof(payload),
-      "{"
-      "\"soil_moisture\":%.1f,"
-      "\"soil_temperature\":%.1f,"
-      "\"L1\":%d,"
-      "\"L2\":%d,"
-      "\"L3\":%d,"
-      "\"L4\":%d,"
-      "\"water_level\":%d,"
-      "\"water_status\":\"%s\","
-      "\"timestamp\":\"%s\","
-      "\"device_id\":\"" DEVICE_ID_VALUE "\""
-      "}",
-      soilMoisture,
-      soilTemperature,
-      level1, level2, level3, level4,
-      waterLevelPercent,
-      describeWaterLevel(),
-      sensorTimestamp
-    );
-  }
+  snprintf(
+    payload, sizeof(payload),
+    "{"
+    "\"soil_moisture\":%.1f,"
+    "\"soil_temperature\":%.1f,"
+    "\"air_temperature\":%.1f,"
+    "\"L1\":%d,"
+    "\"L2\":%d,"
+    "\"L3\":%d,"
+    "\"L4\":%d,"
+    "\"water_level\":%d,"
+    "\"water_status\":\"%s\","
+    "\"timestamp\":\"%s\","
+    "\"device_id\":\"" DEVICE_ID_VALUE "\""
+    "}",
+    soilMoisture,
+    soilTemperature,
+    airTemperature,
+    level1, level2, level3, level4,
+    waterLevelPercent,
+    describeWaterLevel(),
+    sensorTimestamp
+  );
 
   bool ok = false;
   for (int attempt = 1; attempt <= 3; attempt++) {

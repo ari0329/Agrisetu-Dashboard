@@ -601,6 +601,16 @@ canvas { max-width: 100%; }
 }
 .user-menu form { margin: 0; }
 
+.lang-select-wrap {
+  display: flex; align-items: center; gap: 6px;
+}
+.lang-label {
+  margin: 0; white-space: nowrap; font-size: 10px;
+}
+.lang-select {
+  min-width: 108px; padding: 6px 8px; font-size: 11px;
+}
+
 .field-dialog {
   width: min(92vw, 480px); padding: 0; border: 0;
   background: transparent; color: var(--text);

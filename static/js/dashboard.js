@@ -28,11 +28,14 @@ window.state = {
 // ── DOM helpers ───────────────────────────────────────────────────────────────
 const $  = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
+const t  = (key, params) => (window.t ? window.t(key, params) : key);
+const currentLang = () => window.i18n?.lang || window.AGRISETU_LANG || "en";
 
 // ── Clock ─────────────────────────────────────────────────────────────────────
 function updateClock() {
   const el = $("#clock");
-  if (el) el.textContent = new Date().toLocaleTimeString("en-IN", { hour12: false });
+  const locale = window.i18n?.getLocale?.() || "en-IN";
+  if (el) el.textContent = new Date().toLocaleTimeString(locale, { hour12: false });
 }
 setInterval(updateClock, 1000);
 updateClock();
@@ -61,13 +64,13 @@ function updateConnectionBanner(status) {
     banner.className = "connection-banner connected";
     dot.className    = "banner-dot";
     const age = status.age_seconds < 70
-      ? `${Math.round(status.age_seconds)}s ago`
-      : "cached";
-    text.textContent = `Arduino online — last data ${age}`;
+      ? t("ui.seconds_ago", { n: Math.round(status.age_seconds) })
+      : t("ui.cached");
+    text.textContent = t("ui.arduino_online", { age });
   } else {
     banner.className = "connection-banner offline";
     dot.className    = "banner-dot offline";
-    let msg = getFieldId() ? "Device offline" : "No field selected";
+    let msg = getFieldId() ? t("ui.device_offline") : t("ui.no_field_selected");
     if (status.error) msg += ` — ${status.error}`;
     text.textContent = msg;
   }
@@ -78,13 +81,12 @@ function updateButtonStates() {
   const btnReport  = $("#btn-report");
   if (!btnPredict) return;
 
-  // Buttons ONLY enabled when Arduino is actually connected — never for simulated/offline data
   const canPredict = window.state.connected === true;
 
   btnPredict.disabled = !canPredict;
-  btnPredict.title    = canPredict ? "" : "Arduino must be online to predict";
+  btnPredict.title    = canPredict ? "" : t("ui.predict_offline_title");
   btnReport.disabled  = !canPredict;
-  btnReport.title     = canPredict ? "" : "Arduino must be online to generate report";
+  btnReport.title     = canPredict ? "" : t("ui.report_offline_title");
 }
 
 function getFieldId() {
@@ -110,7 +112,7 @@ async function loadFields(selectFieldId = "") {
     ? fields.map(field =>
         `<option value="${field.id}">${escapeHtml(field.name)}</option>`
       ).join("")
-    : `<option value="">No fields yet</option>`;
+    : `<option value="">${t("ui.no_fields_yet")}</option>`;
 
   const nextId = selectFieldId || window.state.fieldId || fields[0]?.id || "";
   if (fields.some(field => field.id === nextId)) select.value = nextId;
@@ -155,7 +157,7 @@ function renderFieldList(fields = window.state.fields || []) {
   if (!list) return;
 
   if (!fields.length) {
-    list.innerHTML = '<p class="field-list-empty">No fields yet. Add one with + Field.</p>';
+    list.innerHTML = `<p class="field-list-empty">${t("ui.no_fields_hint")}</p>`;
     return;
   }
 
@@ -163,11 +165,11 @@ function renderFieldList(fields = window.state.fields || []) {
     <div class="field-list-item" data-field-id="${escapeHtml(field.id)}">
       <div class="field-list-meta">
         <div class="field-list-name">${escapeHtml(field.name)}</div>
-        <div class="field-list-date">Paired ${escapeHtml(formatFieldDate(field.created_at))}</div>
+        <div class="field-list-date">${t("ui.paired")} ${escapeHtml(formatFieldDate(field.created_at))}</div>
       </div>
       <div class="field-list-actions">
-        <button class="btn btn-outline btn-sm btn-edit-field" type="button" data-field-id="${escapeHtml(field.id)}">Edit</button>
-        <button class="btn btn-outline btn-sm btn-delete-field" type="button" data-field-id="${escapeHtml(field.id)}">Delete</button>
+        <button class="btn btn-outline btn-sm btn-edit-field" type="button" data-field-id="${escapeHtml(field.id)}">${t("ui.edit")}</button>
+        <button class="btn btn-outline btn-sm btn-delete-field" type="button" data-field-id="${escapeHtml(field.id)}">${t("ui.delete")}</button>
       </div>
     </div>
   `).join("");
@@ -178,11 +180,10 @@ function openAddFieldDialog() {
   const deviceInput = $("#field-device-id");
   clearFieldFormError();
   $("#field-edit-id").value = "";
-  $("#field-dialog-title").textContent = "Add a field";
-  $("#field-dialog-copy").textContent =
-    "Enter the exact Device ID configured in the ESP8266 sketch. It is used once to securely pair incoming readings with this field.";
+  $("#field-dialog-title").textContent = t("ui.field_dialog_add_title");
+  $("#field-dialog-copy").textContent = t("ui.field_dialog_add_copy");
   $("#field-device-hint")?.classList.add("hidden");
-  $("#btn-save-field").textContent = "Pair field";
+  $("#btn-save-field").textContent = t("ui.pair_field");
   if (deviceInput) {
     deviceInput.value = "";
     deviceInput.required = true;
@@ -204,11 +205,10 @@ function openEditFieldDialog(fieldId) {
     deviceInput.value = "";
     deviceInput.required = false;
   }
-  $("#field-dialog-title").textContent = "Edit field";
-  $("#field-dialog-copy").textContent =
-    "Update the field name or enter a new Device ID to re-pair the ESP8266.";
+  $("#field-dialog-title").textContent = t("ui.field_dialog_edit_title");
+  $("#field-dialog-copy").textContent = t("ui.field_dialog_edit_copy");
   $("#field-device-hint")?.classList.remove("hidden");
-  $("#btn-save-field").textContent = "Save changes";
+  $("#btn-save-field").textContent = t("ui.save_changes");
   $("#fields-manage-dialog")?.close();
   $("#field-dialog")?.showModal();
 }
@@ -224,12 +224,12 @@ async function saveField(event) {
   clearFieldFormError();
 
   if (!isEdit && !deviceId) {
-    showFieldFormError("Device ID is required when pairing a new field.");
+    showFieldFormError(t("ui.device_id_required"));
     return;
   }
 
   button.disabled = true;
-  button.innerHTML = `<span class="spinner"></span> ${isEdit ? "Saving…" : "Pairing…"}`;
+  button.innerHTML = `<span class="spinner"></span> ${isEdit ? t("ui.saving") : t("ui.pairing")}`;
   try {
     const payload = { name };
     if (deviceId) payload.device_id = deviceId;
@@ -256,14 +256,14 @@ async function saveField(event) {
     await fetchSensorData();
     fetchAnalytics();
     toast(
-      isEdit ? `Field "${json.field.name}" updated` : `Field "${json.field.name}" paired`,
+      isEdit ? t("ui.field_updated", { name: json.field.name }) : t("ui.field_paired", { name: json.field.name }),
       "success"
     );
   } catch (err) {
     showFieldFormError(err.message);
   } finally {
     button.disabled = false;
-    button.textContent = isEdit ? "Save changes" : "Pair field";
+    button.textContent = isEdit ? t("ui.save_changes") : t("ui.pair_field");
   }
 }
 
@@ -271,9 +271,7 @@ async function deleteField(fieldId) {
   const field = (window.state.fields || []).find(item => item.id === fieldId);
   if (!field) return;
 
-  const confirmed = window.confirm(
-    `Delete "${field.name}"? This removes its telemetry and analytics history.`
-  );
+  const confirmed = window.confirm(t("ui.delete_field_confirm", { name: field.name }));
   if (!confirmed) return;
 
   try {
@@ -290,7 +288,7 @@ async function deleteField(fieldId) {
       await fetchSensorData();
       fetchAnalytics();
     }
-    toast(`Field "${field.name}" deleted`, "success");
+    toast(t("ui.field_deleted", { name: field.name }), "success");
   } catch (err) {
     toast(err.message, "error");
   }
@@ -314,6 +312,7 @@ async function fetchAdvisory() {
       body: JSON.stringify({
         field_id: getFieldId(),
         vision: window.state.vision || undefined,
+        lang: currentLang(),
       }),
     });
     const json = await res.json();
@@ -333,18 +332,16 @@ async function fetchAdvisory() {
 function renderAdvisoryOffline() {
   const list = $("#advisory-list");
   if (list) {
-    list.innerHTML = `<div class="no-result" style="padding:16px;">
-      Arduino offline — advisory unavailable. Connect sensors for live advice.
-    </div>`;
+    list.innerHTML = `<div class="no-result" style="padding:16px;">${t("ui.advisory_offline")}</div>`;
   }
   const msg = $("#irrigation-msg");
-  if (msg) msg.innerHTML = `<span class="irrigation-text">Waiting for live soil moisture…</span>`;
+  if (msg) msg.innerHTML = `<span class="irrigation-text">${t("ui.waiting_moisture")}</span>`;
   const meta = $("#irrigation-meta");
   if (meta) meta.innerHTML = "";
   const score = $("#risk-score");
   if (score) score.textContent = "—";
   const level = $("#risk-level");
-  if (level) level.textContent = "Yield risk";
+  if (level) level.textContent = t("ui.yield_risk");
   const bars = $("#risk-bars");
   if (bars) bars.innerHTML = "";
 }
@@ -358,24 +355,31 @@ function renderAdvisory(bundle) {
       return `<div class="alert-item ${a.severity}">
         <span>${{warning:"⚠",info:"ℹ",danger:"🔴",success:"✅"}[a.severity]||"•"}</span>
         <span class="alert-text"><b>${a.title}</b> — ${a.detail}</span>
-        ${window.ttsBtn ? window.ttsBtn(speech, "Listen to alert") : ""}
+        ${window.ttsBtn ? window.ttsBtn(speech, t("tts.listen_alert")) : ""}
       </div>`;
-    }).join("") || `<div class="alert-item success">✅ Conditions stable</div>`;
+    }).join("") || `<div class="alert-item success">✅ ${t("ui.conditions_stable")}</div>`;
   }
 
   const irr = bundle.irrigation || {};
   const msg = $("#irrigation-msg");
   if (msg) {
     const irrText = irr.message || "—";
-    msg.innerHTML = `<span class="irrigation-text">${irrText}</span>${window.ttsBtn ? window.ttsBtn(irrText, "Listen to irrigation advice") : ""}`;
+    msg.innerHTML = `<span class="irrigation-text">${irrText}</span>${window.ttsBtn ? window.ttsBtn(irrText, t("tts.listen_irrigation_advice")) : ""}`;
   }
   const meta = $("#irrigation-meta");
   if (meta) {
+    const actionLabel = irr.action_label || (irr.action || "").replace(/_/g, " ");
+    const urgencyLabel = irr.urgency_label || irr.urgency || "";
     const metaText = irr.action
-      ? `Action: ${irr.action.replace(/_/g, " ")} · Urgency: ${irr.urgency} · Next check: ${irr.next_check_hours}h · ~${irr.suggested_litres_per_m2 || 0} L/m²`
+      ? t("ui.irrigation_meta", {
+          action: actionLabel,
+          urgency: urgencyLabel,
+          hours: irr.next_check_hours,
+          litres: irr.suggested_litres_per_m2 || 0,
+        })
       : "";
     meta.innerHTML = metaText
-      ? `<span class="irrigation-meta-text">${metaText}</span>${window.ttsBtn ? window.ttsBtn(metaText, "Listen to irrigation details") : ""}`
+      ? `<span class="irrigation-meta-text">${metaText}</span>${window.ttsBtn ? window.ttsBtn(metaText, t("tts.listen_irrigation_details")) : ""}`
       : "";
   }
   const box = $("#irrigation-box");
@@ -390,7 +394,8 @@ function renderAdvisory(bundle) {
   if (levelEl) {
     const regime = risks.predicted_regime ? ` · ${risks.predicted_regime}` : "";
     const source = risks.prediction_source === "ml" ? "ML" : "Rules";
-    levelEl.textContent = `Yield risk · ${(risks.overall_level || "").toUpperCase()}${regime} (${source})`;
+    const level = (risks.overall_level_label || risks.overall_level || "").toUpperCase();
+    levelEl.textContent = t("ui.yield_risk_level", { level, regime, source });
   }
   const riskBadge = $("#risk-model-badge");
   if (riskBadge) {
@@ -411,7 +416,7 @@ function renderAdvisory(bundle) {
           <span>${r.label}</span>
           <span class="risk-row-actions">
             <span class="risk-pct level-${r.level}">${r.score}</span>
-            ${window.ttsBtn ? window.ttsBtn(speech, "Listen to risk") : ""}
+            ${window.ttsBtn ? window.ttsBtn(speech, t("tts.listen_risk")) : ""}
           </span>
         </div>
         <div class="risk-track"><div class="risk-fill level-${r.level}" style="width:${r.score}%"></div></div>
@@ -425,7 +430,7 @@ async function runVisionScan(demoProfile = null) {
   const btn = $("#btn-vision");
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Scanning…';
+    btn.innerHTML = `<span class="spinner"></span> ${t("ui.scanning")}`;
   }
 
   try {
@@ -438,13 +443,14 @@ async function runVisionScan(demoProfile = null) {
           demo_profile: demoProfile,
           field_id: getFieldId(),
           crop: $("#crop-select")?.value || "",
+          lang: currentLang(),
         }),
       });
     } else {
       const fileInput = $("#leaf-image");
       const file = fileInput?.files?.[0];
       if (!file) {
-        toast("Select a leaf image first, or use a Demo button.", "warning");
+        toast(t("ui.select_leaf_image"), "warning");
         return;
       }
       const preview = $("#vision-preview");
@@ -457,6 +463,7 @@ async function runVisionScan(demoProfile = null) {
       fd.append("image", file);
       fd.append("field_id", getFieldId());
       fd.append("crop", $("#crop-select")?.value || "");
+      fd.append("lang", currentLang());
       res = await fetch("/api/vision", { method: "POST", body: fd });
     }
 
@@ -470,13 +477,13 @@ async function runVisionScan(demoProfile = null) {
     }
     renderVision(json.vision);
     fetchAnalytics();
-    toast("Leaf scan complete (edge processed)", "success");
+    toast(t("ui.vision_complete"), "success");
   } catch (err) {
-    toast(`Vision error: ${err.message}`, "error");
+    toast(t("ui.vision_error", { msg: err.message }), "error");
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = "Scan Leaf";
+      btn.innerHTML = t("ui.scan_leaf");
     }
   }
 }
@@ -495,36 +502,36 @@ function renderVision(v) {
     <div class="vision-health">
       <div class="vision-health-score">${v.field_health_score ?? "—"}</div>
       <div>
-        <div class="gauge-crop" style="font-size:20px;">Field health</div>
+        <div class="gauge-crop" style="font-size:20px;">${t("ui.field_health")}</div>
         <div class="gauge-months">${v.growth_stage || ""}</div>
         <div class="gauge-model">via ${v.model || "edge vision"}</div>
       </div>
     </div>
     <div class="vision-flags">
-      ${flag(v.disease_detected, "Disease", v.disease_confidence)}
-      ${flag(v.pest_detected, "Pest", v.pest_confidence)}
-      ${flag(v.nutrient_flag, "Nutrient", v.nutrient_confidence)}
+      ${flag(v.disease_detected, t("ui.disease"), v.disease_confidence)}
+      ${flag(v.pest_detected, t("ui.pest"), v.pest_confidence)}
+      ${flag(v.nutrient_flag, t("ui.nutrient"), v.nutrient_confidence)}
     </div>
     <div class="alerts-list">
       <div class="alert-item ${v.disease_detected ? "danger" : "success"}">
         <span>${v.disease_detected ? "🔴" : "✅"}</span>
         <span class="alert-text">${v.disease_summary || "—"}</span>
-        ${window.ttsBtn ? window.ttsBtn(v.disease_summary || "No disease detected", "Listen to disease summary") : ""}
+        ${window.ttsBtn ? window.ttsBtn(v.disease_summary || t("tts.no_disease"), t("tts.listen_disease")) : ""}
       </div>
       <div class="alert-item ${v.pest_detected ? "warning" : "success"}">
         <span>${v.pest_detected ? "⚠" : "✅"}</span>
         <span class="alert-text">${v.pest_summary || "—"}</span>
-        ${window.ttsBtn ? window.ttsBtn(v.pest_summary || "No pest detected", "Listen to pest summary") : ""}
+        ${window.ttsBtn ? window.ttsBtn(v.pest_summary || t("tts.no_pest"), t("tts.listen_pest")) : ""}
       </div>
       <div class="alert-item ${v.nutrient_flag ? "warning" : "info"}">
         <span>${v.nutrient_flag ? "⚠" : "ℹ"}</span>
         <span class="alert-text">${v.nutrient_summary || "—"}</span>
-        ${window.ttsBtn ? window.ttsBtn(v.nutrient_summary || "No nutrient issues", "Listen to nutrient summary") : ""}
+        ${window.ttsBtn ? window.ttsBtn(v.nutrient_summary || t("tts.no_nutrient_issues"), t("tts.listen_nutrient")) : ""}
       </div>
     </div>
     <ul class="rec-list">
       ${(v.recommendations || []).map(r =>
-        `<li class="rec-item"><span>${r}</span>${window.ttsBtn ? window.ttsBtn(r, "Listen to recommendation") : ""}</li>`
+        `<li class="rec-item"><span>${r}</span>${window.ttsBtn ? window.ttsBtn(r, t("tts.listen_recommendation")) : ""}</li>`
       ).join("")}
     </ul>`;
 }
@@ -569,14 +576,14 @@ function initAnalyticsChart() {
       labels: [],
       datasets: [
         {
-          label: "Moisture (%)",
+          label: t("ui.chart_analytics_moisture"),
           data: [],
           borderColor: "#A8FF3E",
           backgroundColor: "rgba(168,255,62,0.08)",
           borderWidth: 2, pointRadius: 2, tension: 0.4, fill: true, yAxisID: "y",
         },
         {
-          label: "Yield risk (%)",
+          label: t("ui.chart_analytics_risk"),
           data: [],
           borderColor: "#FF6B6B",
           backgroundColor: "rgba(255,107,107,0.06)",
@@ -662,9 +669,9 @@ async function fetchSensorData() {
         panel.innerHTML = `
           <div class="no-result">
             <span class="no-result-icon">✅</span>
-            Arduino connected!<br>
+            ${t("ui.arduino_connected")}<br>
             <span style="font-size:11px;margin-top:8px;display:block;color:var(--text-dim);">
-              Fill in your details and click <b>Predict</b> to get a crop recommendation.
+              ${t("ui.arduino_connected_sub")}
             </span>
           </div>`;
       }
@@ -803,12 +810,12 @@ function updateQuickStats() {
     set("#mini-at-val",  `— <span class="mini-stat-unit">°C</span>`);
     set("#mini-hum-val", `— <span class="mini-stat-unit">%</span>`);
     const src = $("#data-source");
-    if (src) src.textContent = "❌ Arduino offline";
+    if (src) src.textContent = t("ui.arduino_offline_src");
     return;
   }
 
   const simTag = d.simulated
-    ? `<span style="font-size:9px;color:var(--text-dim);margin-left:2px;" title="Estimated — sensor not on device">~sim</span>`
+    ? `<span style="font-size:9px;color:var(--text-dim);margin-left:2px;" title="${t("ui.simulated_hint")}">~sim</span>`
     : "";
 
   set("#mini-sm-val",
@@ -824,15 +831,15 @@ function updateQuickStats() {
 
   const src = $("#data-source");
   if (src) {
-    src.textContent = d.source === "arduino_direct" ? "🔌 Arduino Direct"
-                    : d.source === "cached"         ? "🕐 Cached data"
-                    : "🔄 Live";
+    src.textContent = d.source === "arduino_direct" ? t("ui.arduino_direct")
+                    : d.source === "cached"         ? t("ui.cached_data")
+                    : t("ui.live_source");
   }
 }
 
 // ── Chart ─────────────────────────────────────────────────────────────────────
 function pushToHistory(d) {
-  const now = new Date().toLocaleTimeString("en-IN",
+  const now = new Date().toLocaleTimeString(window.i18n?.getLocale?.() || "en-IN",
     { hour12: false, timeStyle: "short" });
   window.state.historyMoist.push(d.soil_moisture   ?? null);
   window.state.historyTemp.push(d.soil_temperature ?? null);
@@ -853,7 +860,7 @@ function initChart() {
       labels: window.state.historyLabels,
       datasets: [
         {
-          label: "Soil Moisture (%)",
+          label: t("ui.chart_moisture"),
           data: window.state.historyMoist,
           borderColor: "#A8FF3E",
           backgroundColor: "rgba(168,255,62,0.08)",
@@ -863,7 +870,7 @@ function initChart() {
           spanGaps: true,
         },
         {
-          label: "Soil Temperature (°C)",
+          label: t("ui.chart_temp"),
           data: window.state.historyTemp,
           borderColor: "#FFAB40",
           backgroundColor: "rgba(255,171,64,0.06)",
@@ -921,13 +928,13 @@ function updateChart() {
 // ── Local rule-based prediction (runs in-browser when backend is offline) ────
 function localRulePredict(sensor, preferredCrop) {
   const m = sensor.soil_moisture    ?? 50;
-  const t = sensor.soil_temperature ?? 25;
+  const soilTemp = sensor.soil_temperature ?? 25;
   const h = sensor.humidity         ?? 60;
   const r = sensor.rainfall         ?? 0;
 
   let crop, months, reason;
-  if (m > 70 && t > 27)        { crop = "Rice";      months = 4;  reason = "High moisture + warm temp ideal for rice"; }
-  else if (m < 38 && t < 23)   { crop = "Wheat";     months = 5;  reason = "Low moisture + cool temp suits wheat"; }
+  if (m > 70 && soilTemp > 27)        { crop = "Rice";      months = 4;  reason = "High moisture + warm temp ideal for rice"; }
+  else if (m < 38 && soilTemp < 23)   { crop = "Wheat";     months = 5;  reason = "Low moisture + cool temp suits wheat"; }
   else if (m > 65 || r > 100)  { crop = "Sugarcane"; months = 12; reason = "High moisture / rainfall suits sugarcane"; }
   else if (40 <= m && m <= 70) { crop = "Maize";     months = 3;  reason = "Moderate moisture ideal for maize"; }
   else if (preferredCrop)      { crop = preferredCrop.charAt(0).toUpperCase() + preferredCrop.slice(1); months = 4; reason = "Based on your preferred crop selection"; }
@@ -943,14 +950,14 @@ function localRulePredict(sensor, preferredCrop) {
   let conf  = 0.72;
   if (th) {
     const ms = m >= th.moisture[0] && m <= th.moisture[1] ? 1.0 : Math.max(0, 1 - Math.abs(m - (th.moisture[0]+th.moisture[1])/2)/40);
-    const ts = t >= th.temp[0]    && t <= th.temp[1]    ? 1.0 : Math.max(0, 1 - Math.abs(t - (th.temp[0]+th.temp[1])/2)/20);
+    const ts = soilTemp >= th.temp[0]    && soilTemp <= th.temp[1]    ? 1.0 : Math.max(0, 1 - Math.abs(soilTemp - (th.temp[0]+th.temp[1])/2)/20);
     conf = Math.round((ms*0.5 + ts*0.5) * 100) / 100;
   }
 
   const alerts = [];
   if (m < 30) alerts.push({type:"warning", msg:"Low soil moisture — irrigation recommended"});
   if (m > 82) alerts.push({type:"info",    msg:"High moisture — check drainage"});
-  if (t > 36) alerts.push({type:"danger",  msg:"Heat stress risk — apply shade/cooling"});
+  if (soilTemp > 36) alerts.push({type:"danger",  msg:"Heat stress risk — apply shade/cooling"});
 
   return {
     recommended_crop: crop,
@@ -969,11 +976,11 @@ function localRulePredict(sensor, preferredCrop) {
 // ── Prediction ────────────────────────────────────────────────────────────────
 async function runPrediction() {
   if (!window.state.connected) {
-    toast("❌ Arduino must be online to run a prediction.", "error");
+    toast(t("ui.predict_offline"), "error");
     return;
   }
   if (!window.state.sensorData) {
-    toast("⚠️ No sensor data yet — please wait a moment.", "error");
+    toast(t("ui.no_sensor_data"), "error");
     return;
   }
 
@@ -982,7 +989,7 @@ async function runPrediction() {
   const ptext = $("#pred-text").value.trim();
 
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Predicting…';
+  btn.innerHTML = `<span class="spinner"></span> ${t("ui.predicting")}`;
 
   try {
     const res  = await fetch("/api/predict", {
@@ -991,12 +998,13 @@ async function runPrediction() {
       body: JSON.stringify({
         crop, prediction_text: ptext,
         field_id: getFieldId(),
+        lang: currentLang(),
       }),
     });
     const json = await res.json();
 
     if (res.status === 503) {
-      toast("❌ Arduino offline — prediction blocked.", "error");
+      toast(t("ui.predict_blocked"), "error");
       return;
     }
     if (!json.success) throw new Error(json.error);
@@ -1009,13 +1017,13 @@ async function runPrediction() {
       renderAdvisory(json.prediction.advisory);
     }
     fetchAnalytics();
-    toast(`✅ Predicted: ${json.prediction.recommended_crop}`, "success");
+    toast(t("ui.predicted_crop", { crop: json.prediction.recommended_crop }), "success");
 
   } catch (err) {
-    toast(`Prediction error: ${err.message}`, "error");
+    toast(t("ui.prediction_error", { msg: err.message }), "error");
   } finally {
     btn.disabled = !window.state.connected;
-    btn.innerHTML = "🌾 Predict";
+    btn.innerHTML = t("ui.predict_btn");
   }
 }
 
@@ -1033,24 +1041,21 @@ function renderPrediction(p) {
         `<div class="alert-item ${a.type}">
           <span>${{warning:"⚠",info:"ℹ",danger:"🔴",success:"✅"}[a.type]||"•"}</span>
           <span class="alert-text">${a.msg}</span>
-          ${window.ttsBtn ? window.ttsBtn(a.msg, "Listen to alert") : ""}
+          ${window.ttsBtn ? window.ttsBtn(a.msg, t("tts.listen_alert")) : ""}
         </div>`
       ).join("")
-    : `<div class="alert-item success">✅ All conditions look favourable!</div>`;
+    : `<div class="alert-item success">✅ ${t("ui.all_favourable")}</div>`;
 
-  const noteText = p.prediction_text
-    ? `Your note: ${p.prediction_text}`
-    : "No custom note provided.";
   const userCropLabel = p.user_crop
     ? p.user_crop.charAt(0).toUpperCase() + p.user_crop.slice(1)
     : "";
   const explanationHTML = p.explanation
     ? `<div class="prediction-explanation">
-        <div class="prediction-explanation-title">Why this crop?</div>
+        <div class="prediction-explanation-title">${t("ui.why_crop")}</div>
         <p class="prediction-explanation-body">${p.explanation}</p>
-        ${userCropLabel ? `<p class="prediction-explanation-meta"><b>Your preferred crop:</b> ${userCropLabel}${p.preferred_crop_score != null ? ` · suitability ${p.preferred_crop_score}%` : ""}</p>` : ""}
-        ${p.prediction_text ? `<p class="prediction-explanation-meta"><b>Your note:</b> "${p.prediction_text}"</p>` : ""}
-        ${window.ttsBtn ? window.ttsBtn(p.explanation, "Listen to explanation") : ""}
+        ${userCropLabel ? `<p class="prediction-explanation-meta"><b>${t("ui.your_preferred_crop")}</b> ${userCropLabel}${p.preferred_crop_score != null ? ` · ${t("ui.suitability")} ${p.preferred_crop_score}%` : ""}</p>` : ""}
+        ${p.prediction_text ? `<p class="prediction-explanation-meta"><b>${t("ui.your_note")}</b> "${p.prediction_text}"</p>` : ""}
+        ${window.ttsBtn ? window.ttsBtn(p.explanation, t("tts.listen_explanation")) : ""}
       </div>`
     : "";
   const cropSpeech = window.collectPredictionSpeech
@@ -1059,8 +1064,8 @@ function renderPrediction(p) {
 
   panel.innerHTML = `
     <div class="card-head" style="margin-bottom:12px;">
-      <h2 style="font-size:16px;margin:0;">Prediction Result</h2>
-      ${window.ttsBtn ? window.ttsBtn(cropSpeech, "Listen to full prediction") : ""}
+      <h2 style="font-size:16px;margin:0;">${t("ui.prediction_result")}</h2>
+      ${window.ttsBtn ? window.ttsBtn(cropSpeech, t("tts.listen_full_prediction")) : ""}
     </div>
     <div>
       <div class="gauge-wrap">
@@ -1072,11 +1077,11 @@ function renderPrediction(p) {
             stroke="${stroke}" stroke-dasharray="${circum}"
             stroke-dashoffset="${circum}" transform="rotate(-90 55 55)"/>
           <text class="gauge-label" x="55" y="60">${conf}%</text>
-          <text class="gauge-sub"   x="55" y="74">CONFIDENCE</text>
+          <text class="gauge-sub"   x="55" y="74">${t("ui.confidence")}</text>
         </svg>
         <div class="gauge-info">
           <div class="gauge-crop">${p.recommended_crop}</div>
-          <div class="gauge-months">⏱ ${p.growth_months} months to harvest</div>
+          <div class="gauge-months">${t("ui.months_harvest", { n: p.growth_months })}</div>
           <div class="gauge-model">via ${p.model_used}</div>
         </div>
       </div>
@@ -1093,17 +1098,17 @@ function renderPrediction(p) {
 // ── Report ────────────────────────────────────────────────────────────────────
 async function generateReport() {
   if (!window.state.prediction) {
-    toast("⚠️ Run a prediction first before downloading the report.", "error");
+    toast(t("ui.run_prediction_first"), "error");
     return;
   }
   if (!window.state.connected) {
-    toast("❌ Arduino must be online to generate a PDF report.", "error");
+    toast(t("ui.report_offline"), "error");
     return;
   }
 
   const btn = $("#btn-report");
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Generating PDF…';
+  btn.innerHTML = `<span class="spinner"></span> ${t("ui.generating_pdf")}`;
 
   try {
     const res  = await fetch("/api/report", {
@@ -1117,7 +1122,7 @@ async function generateReport() {
     const json = await res.json();
 
     if (res.status === 503) {
-      toast("❌ Arduino offline — report blocked.", "error");
+      toast(t("ui.report_blocked"), "error");
       return;
     }
     if (!json.success) throw new Error(json.error);
@@ -1126,13 +1131,13 @@ async function generateReport() {
     link.href     = json.pdf_url;
     link.download = json.filename;
     link.click();
-    toast("📄 PDF report downloaded!", "success");
+    toast(t("ui.report_downloaded"), "success");
 
   } catch (err) {
-    toast(`Report error: ${err.message}`, "error");
+    toast(t("ui.report_error", { msg: err.message }), "error");
   } finally {
     btn.disabled = false;
-    btn.innerHTML = "📄 Download Report";
+    btn.innerHTML = t("ui.download_report");
   }
 }
 
@@ -1147,8 +1152,39 @@ function toast(msg, type = "") {
   setTimeout(() => el.remove(), 4000);
 }
 
+function refreshChartLabels() {
+  if (window.state.chart) {
+    window.state.chart.data.datasets[0].label = t("ui.chart_moisture");
+    window.state.chart.data.datasets[1].label = t("ui.chart_temp");
+    window.state.chart.update("quiet");
+  }
+  if (window.state.analyticsChart) {
+    window.state.analyticsChart.data.datasets[0].label = t("ui.chart_analytics_moisture");
+    window.state.analyticsChart.data.datasets[1].label = t("ui.chart_analytics_risk");
+    window.state.analyticsChart.update("quiet");
+  }
+}
+
+window.onLanguageChanged = async function onLanguageChanged() {
+  updateClock();
+  await fetchConnectionStatus();
+  updateButtonStates();
+  renderFieldList(window.state.fields || []);
+  if (window.state.advisory) renderAdvisory(window.state.advisory);
+  else renderAdvisoryOffline();
+  if (window.state.vision) renderVision(window.state.vision);
+  if (window.state.prediction) renderPrediction(window.state.prediction);
+  updateQuickStats();
+  refreshChartLabels();
+  window.i18n?.applyDom?.();
+  if (window.state.connected && window.state.sensorData) {
+    fetchAdvisory();
+  }
+};
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
+  if (window.i18n?.ready) await window.i18n.ready;
   initChart();
   initAnalyticsChart();
 

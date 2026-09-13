@@ -44,10 +44,14 @@ from mongo_store import (
     get_history,
     get_sensor_data,
     list_fields,
+    normalize_language,
     save_device_telemetry,
     update_field,
+    update_user_language,
     user_exists,
+    DEFAULT_LANGUAGE,
 )
+from i18n import translate_advisory_bundle, translate_prediction, translate_vision_result
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 Config.LOGS_DIR.mkdir(exist_ok=True)
@@ -134,6 +138,10 @@ def _user_id():
     return session.get("user", {}).get("id", "")
 
 
+def _user_lang():
+    return normalize_language(session.get("user", {}).get("preferred_language"))
+
+
 def _requested_field_id(body=None):
     return (
         (body or {}).get("field_id")
@@ -169,16 +177,26 @@ def login():
         return redirect(url_for("home"))
 
     error = ""
+    selected_lang = normalize_language(
+        request.form.get("preferred_language")
+        or request.args.get("lang")
+        or DEFAULT_LANGUAGE
+    )
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
         password = request.form.get("password") or ""
+        selected_lang = normalize_language(request.form.get("preferred_language") or selected_lang)
         try:
             if not user_exists(email):
                 return redirect(Config.SIGNUP_URL)
             user = authenticate_user(email, password)
             if user:
+                updated_user = update_user_language(user["id"], selected_lang)
                 session.clear()
-                session["user"] = user
+                session["user"] = updated_user or {
+                    **user,
+                    "preferred_language": selected_lang,
+                }
                 session.permanent = True
                 session["fresh_login"] = True
                 return redirect(url_for("home"))
@@ -189,7 +207,12 @@ def login():
             logger.warning("Login failed: %s", exc)
             error = "Unable to sign in. Please try again."
 
-    return render_template("login.html", error=error, signup_url=Config.SIGNUP_URL)
+    return render_template(
+        "login.html",
+        error=error,
+        signup_url=Config.SIGNUP_URL,
+        selected_lang=selected_lang,
+    )
 
 
 @app.route("/logout", methods=["POST"])
@@ -201,6 +224,20 @@ def logout():
 @app.route("/api/me")
 def api_me():
     return jsonify({"success": True, "user": session["user"]})
+
+
+@app.route("/api/me/preferences", methods=["PATCH"])
+def api_update_preferences():
+    body = request.get_json(silent=True) or {}
+    lang = normalize_language(body.get("preferred_language", ""))
+    try:
+        user = update_user_language(_user_id(), lang)
+        if not user:
+            return jsonify({"success": False, "error": "User not found"}), 404
+        session["user"] = user
+        return jsonify({"success": True, "user": user})
+    except StoreUnavailable as exc:
+        return jsonify({"success": False, "error": str(exc)}), 503
 
 
 @app.route("/api/fields", methods=["GET", "POST"])
@@ -378,6 +415,7 @@ def api_predict():
             engine = "Rule-based (ML models not loaded)"
 
         advisory = full_advisory_bundle(sensor_data)
+        lang = normalize_language(body.get("lang") or _user_lang())
         explanation = build_prediction_explanation(
             sensor_data, rec, preferred, pred_text,
         )
@@ -399,6 +437,7 @@ def api_predict():
             "model_used":       engine,
             "timestamp":        datetime.now().isoformat(),
         }
+        prediction = translate_prediction(prediction, lang)
 
         try:
             append_snapshot(
@@ -431,6 +470,8 @@ def api_advisory():
 
     vision = body.get("vision")
     bundle = full_advisory_bundle(sensor_data, vision=vision)
+    lang = normalize_language(body.get("lang") or request.args.get("lang") or _user_lang())
+    bundle = translate_advisory_bundle(bundle, lang)
 
     try:
         append_snapshot(
@@ -463,10 +504,13 @@ def api_vision():
         crop_hint = ""
         field_id = ""
         result = None
+        lang_hint = _user_lang()
+        body = {}
 
         if request.content_type and "multipart/form-data" in request.content_type:
             crop_hint = (request.form.get("crop") or "").strip()
             field_id = (request.form.get("field_id") or "").strip()
+            lang_hint = request.form.get("lang") or lang_hint
             file = request.files.get("image") or request.files.get("file")
             if not file:
                 return jsonify({"success": False, "error": "No image file uploaded"}), 400
@@ -475,6 +519,7 @@ def api_vision():
             body = request.get_json(silent=True) or {}
             crop_hint = (body.get("crop") or "").strip()
             field_id = (body.get("field_id") or "").strip()
+            lang_hint = body.get("lang") or lang_hint
             demo = body.get("demo_profile")
             if demo:
                 result = analyze_demo_profile(demo)
@@ -496,10 +541,16 @@ def api_vision():
         if not result.get("success"):
             return jsonify(result), 400
 
+        lang = normalize_language(lang_hint)
+        result = translate_vision_result(result, lang)
+
         sensor_data = get_sensor_data(_user_id(), field_id)
         advisory = None
         if sensor_data:
-            advisory = full_advisory_bundle(sensor_data, vision=result)
+            advisory = translate_advisory_bundle(
+                full_advisory_bundle(sensor_data, vision=result),
+                lang,
+            )
             try:
                 append_snapshot(
                     _user_id(),
@@ -585,7 +636,8 @@ def api_tts():
     """Generate spoken audio for dashboard text using gTTS."""
     body = request.get_json(silent=True) or {}
     text = sanitize_tts_text(body.get("text", ""))
-    lang = (body.get("lang") or "en").strip()[:5]
+    lang = (body.get("lang") or _user_lang()).strip()[:5]
+    lang = normalize_language(lang)
     if not text:
         return jsonify({"success": False, "error": "text is required"}), 400
     try:

@@ -35,36 +35,37 @@ def assess_irrigation(sensor_data: dict) -> Dict[str, Any]:
     if rainfall > 40:
         action = "delay_irrigation"
         urgency = "low"
-        message = "Irrigate later — recent/expected rainfall is sufficient."
+        message_key = "rainfall_sufficient"
         litres_hint = 0
     elif moisture < 25:
         action = "irrigate_now"
         urgency = "critical"
-        message = "Irrigate now — severe water stress detected."
+        message_key = "severe_stress"
         litres_hint = round(18 + et_proxy * 4, 1)
     elif moisture < 35:
         action = "irrigate_now"
         urgency = "high"
-        message = "Irrigate soon — soil moisture below crop comfort zone."
+        message_key = "below_comfort"
         litres_hint = round(12 + et_proxy * 3, 1)
     elif moisture > 85:
         action = "stop_irrigation"
         urgency = "high"
-        message = "Stop irrigation — over-watering / waterlogging risk."
+        message_key = "overwatering"
         litres_hint = 0
     elif moisture > 75:
         action = "delay_irrigation"
         urgency = "low"
-        message = "Delay irrigation — soil is already well hydrated."
+        message_key = "well_hydrated"
         litres_hint = 0
     else:
         action = "monitor"
         urgency = "normal"
-        message = "Moisture is adequate — maintain scheduled light irrigation."
+        message_key = "adequate"
         litres_hint = round(4 + et_proxy * 1.5, 1)
 
+    reservoir_low = False
     if water < 20 and action == "irrigate_now":
-        message += " Reservoir critically low — top up water source first."
+        reservoir_low = True
         urgency = "critical"
 
     # Next check window (hours)
@@ -78,13 +79,30 @@ def assess_irrigation(sensor_data: dict) -> Dict[str, Any]:
     return {
         "action": action,
         "urgency": urgency,
-        "message": message,
+        "message_key": message_key,
+        "reservoir_low": reservoir_low,
+        "message": _irrigation_message(action, message_key, reservoir_low),
         "suggested_litres_per_m2": litres_hint,
         "next_check_hours": next_check_h,
         "et_proxy": round(et_proxy, 2),
         "soil_moisture": moisture,
         "water_level": water,
     }
+
+
+def _irrigation_message(action: str, message_key: str, reservoir_low: bool) -> str:
+    messages = {
+        "rainfall_sufficient": "Irrigate later — recent/expected rainfall is sufficient.",
+        "severe_stress": "Irrigate now — severe water stress detected.",
+        "below_comfort": "Irrigate soon — soil moisture below crop comfort zone.",
+        "overwatering": "Stop irrigation — over-watering / waterlogging risk.",
+        "well_hydrated": "Delay irrigation — soil is already well hydrated.",
+        "adequate": "Moisture is adequate — maintain scheduled light irrigation.",
+    }
+    message = messages.get(message_key, "Check irrigation schedule.")
+    if reservoir_low:
+        message += " Reservoir critically low — top up water source first."
+    return message
 
 
 def assess_environmental_risks(sensor_data: dict) -> Dict[str, Any]:
@@ -201,7 +219,9 @@ def assess_nutrient_from_ph(sensor_data: dict) -> Dict[str, Any]:
             "status": "unknown",
             "message": "Soil pH sensor not available — consider manual soil test (NPK kit).",
             "deficiencies": [],
+            "deficiency_keys": [],
             "actions": ["Collect soil sample for NPK and pH lab / kit test."],
+            "action_keys": ["collect_sample"],
         }
 
     ph = float(ph)
@@ -210,32 +230,30 @@ def assess_nutrient_from_ph(sensor_data: dict) -> Dict[str, Any]:
 
     if ph < 5.5:
         status = "acidic"
-        deficiencies = ["Phosphorus lock-up", "Calcium / Magnesium likely low"]
-        actions = [
-            "Apply agricultural lime (2–4 kg / 100 m²) after soil test.",
-            "Avoid excess ammonium fertilizers until pH rises.",
-        ]
+        deficiency_keys = ["phosphorus_lockup", "calcium_low"]
+        action_keys = ["apply_lime", "avoid_ammonium"]
     elif ph > 7.8:
         status = "alkaline"
-        deficiencies = ["Iron deficiency risk", "Zinc / Manganese availability low"]
-        actions = [
-            "Use organic compost and acidifying fertilizers (e.g. ammonium sulphate).",
-            "Foliar Fe/Zn spray if yellowing between leaf veins appears.",
-        ]
+        deficiency_keys = ["iron_risk", "zinc_low"]
+        action_keys = ["use_compost", "foliar_spray"]
     elif ph < 6.0:
         status = "slightly_acidic"
-        deficiencies = ["Possible low calcium"]
-        actions = ["Monitor for tip burn; light lime if crop is sensitive."]
+        deficiency_keys = ["calcium_possible"]
+        action_keys = ["monitor_tip_burn"]
     elif ph > 7.2:
         status = "slightly_alkaline"
-        deficiencies = ["Possible micronutrient stress"]
-        actions = ["Add compost; watch for interveinal chlorosis."]
+        deficiency_keys = ["micronutrient_stress"]
+        action_keys = ["add_compost_chlorosis"]
     else:
         status = "optimal"
-        deficiencies = []
-        actions = ["pH in good range — balance NPK based on crop stage."]
+        deficiency_keys = []
+        action_keys = ["ph_optimal"]
+
+    deficiencies = [_nutrient_deficiency_text(key) for key in deficiency_keys]
+    actions = [_nutrient_action_text(key) for key in action_keys]
 
     if moisture < 30:
+        action_keys.append("correct_moisture")
         actions.append("Correct moisture before fertilizing — dry soil wastes nutrients.")
 
     return {
@@ -243,8 +261,35 @@ def assess_nutrient_from_ph(sensor_data: dict) -> Dict[str, Any]:
         "ph": ph,
         "message": f"Soil pH is {ph:.1f} ({status.replace('_', ' ')}).",
         "deficiencies": deficiencies,
+        "deficiency_keys": deficiency_keys,
         "actions": actions,
+        "action_keys": action_keys,
     }
+
+
+def _nutrient_deficiency_text(key: str) -> str:
+    return {
+        "phosphorus_lockup": "Phosphorus lock-up",
+        "calcium_low": "Calcium / Magnesium likely low",
+        "iron_risk": "Iron deficiency risk",
+        "zinc_low": "Zinc / Manganese availability low",
+        "calcium_possible": "Possible low calcium",
+        "micronutrient_stress": "Possible micronutrient stress",
+    }.get(key, key)
+
+
+def _nutrient_action_text(key: str) -> str:
+    return {
+        "apply_lime": "Apply agricultural lime (2–4 kg / 100 m²) after soil test.",
+        "avoid_ammonium": "Avoid excess ammonium fertilizers until pH rises.",
+        "use_compost": "Use organic compost and acidifying fertilizers (e.g. ammonium sulphate).",
+        "foliar_spray": "Foliar Fe/Zn spray if yellowing between leaf veins appears.",
+        "monitor_tip_burn": "Monitor for tip burn; light lime if crop is sensitive.",
+        "add_compost_chlorosis": "Add compost; watch for interveinal chlorosis.",
+        "ph_optimal": "pH in good range — balance NPK based on crop stage.",
+        "collect_sample": "Collect soil sample for NPK and pH lab / kit test.",
+        "correct_moisture": "Correct moisture before fertilizing — dry soil wastes nutrients.",
+    }.get(key, key)
 
 
 def build_farmer_advisories(

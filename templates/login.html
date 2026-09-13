@@ -1,10 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ selected_lang|default('en') }}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sign in — AgriSetu</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  <script>window.AGRISETU_LANG = {{ selected_lang|default('en')|tojson }};</script>
+  <script>window.AGRISETU_LOGIN_PAGE = true;</script>
+  <script src="{{ url_for('static', filename='js/i18n.js') }}" defer></script>
 </head>
 <body class="auth-page">
   <main class="auth-shell">
@@ -13,35 +16,48 @@
         <div class="logo-icon">🌱</div>
         <div>
           AGRISETU
-          <div class="logo-sub">Your farms, devices, and live intelligence</div>
+          <div class="logo-sub" data-i18n="login.logo_sub">Your farms, devices, and live intelligence</div>
         </div>
       </div>
 
       <div>
-        <h1>Welcome back</h1>
-        <p>Sign in with the same account you use on AgriSetu.</p>
+        <h1 data-i18n="login.welcome">Welcome back</h1>
+        <p data-i18n="login.subtitle">Sign in with the same account you use on AgriSetu.</p>
       </div>
 
       {% if error %}
         <div class="auth-error" role="alert">{{ error }}</div>
       {% endif %}
 
-      <form method="post" class="auth-form">
+      <form method="post" class="auth-form" id="login-form">
         <div class="form-group">
-          <label class="form-label" for="email">Email</label>
+          <label class="form-label" for="email" data-i18n="login.email">Email</label>
           <input class="form-input" id="email" name="email" type="email"
                  autocomplete="email" required />
         </div>
         <div class="form-group">
-          <label class="form-label" for="password">Password</label>
+          <label class="form-label" for="password" data-i18n="login.password">Password</label>
           <input class="form-input" id="password" name="password" type="password"
                  autocomplete="current-password" required />
         </div>
-        <button class="btn btn-primary auth-submit" type="submit">Sign in</button>
+        <div class="form-group">
+          <label class="form-label" for="login-lang-select" data-i18n="login.preferred_language">Preferred language</label>
+          <select class="form-select" id="login-lang-select" name="preferred_language" aria-label="Preferred language">
+            <option value="en" {% if selected_lang == 'en' %}selected{% endif %}>English</option>
+            <option value="hi" {% if selected_lang == 'hi' %}selected{% endif %}>हिन्दी</option>
+            <option value="bn" {% if selected_lang == 'bn' %}selected{% endif %}>বাংলা</option>
+            <option value="ta" {% if selected_lang == 'ta' %}selected{% endif %}>தமிழ்</option>
+            <option value="mr" {% if selected_lang == 'mr' %}selected{% endif %}>मराठी</option>
+            <option value="te" {% if selected_lang == 'te' %}selected{% endif %}>తెలుగు</option>
+            <option value="kn" {% if selected_lang == 'kn' %}selected{% endif %}>ಕನ್ನಡ</option>
+          </select>
+        </div>
+        <button class="btn btn-primary auth-submit" type="submit" data-i18n="login.sign_in">Sign in</button>
       </form>
 
       <p class="auth-signup">
-        No account? <a href="{{ signup_url }}">Create one on AgriSetu</a>
+        <span data-i18n="login.no_account">No account?</span>
+        <a href="{{ signup_url }}" data-i18n="login.create_one">Create one on AgriSetu</a>
       </p>
     </section>
   </main>

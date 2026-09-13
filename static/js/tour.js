@@ -2,12 +2,17 @@
 
 const TOUR_STORAGE_KEY = "agrisetu_tour_done_v1";
 
+function tourT(key, fallback = "") {
+  return window.t ? window.t(key) : fallback;
+}
+
 function tourPopoverHtml(title, body) {
   const encoded = encodeURIComponent(`${title}. ${body}`);
+  const listenLabel = tourT("tour.listen_step", "Listen to this step");
   return `
     <p class="tour-body">${body}</p>
-    <button type="button" class="btn-tts tour-step-tts" data-tts-text="${encoded}" title="Listen to this step">
-      🔊 Listen
+    <button type="button" class="btn-tts tour-step-tts" data-tts-text="${encoded}" title="${listenLabel}" aria-label="${listenLabel}">
+      🔊 ${tourT("tour.listen", "Listen")}
     </button>`;
 }
 
@@ -16,10 +21,10 @@ function buildTourSteps() {
     {
       element: "#field-id",
       popover: {
-        title: "Select your field",
+        title: tourT("tour.field_title", "Select your field"),
         description: tourPopoverHtml(
-          "Select your field",
-          "Choose the field paired with your ESP8266 device. Use + Field to add a new one with your Device ID from the Arduino sketch."
+          tourT("tour.field_title", "Select your field"),
+          tourT("tour.field_body", "Choose the field paired with your ESP8266 device.")
         ),
         side: "bottom",
         align: "start",
@@ -28,10 +33,10 @@ function buildTourSteps() {
     {
       element: "#connection-banner",
       popover: {
-        title: "Device connection",
+        title: tourT("tour.connection_title", "Device connection"),
         description: tourPopoverHtml(
-          "Device connection",
-          "This banner shows whether your Arduino sensors are online. Predictions and live advisories need an active connection."
+          tourT("tour.connection_title", "Device connection"),
+          tourT("tour.connection_body", "This banner shows whether your Arduino sensors are online.")
         ),
         side: "bottom",
         align: "center",
@@ -40,10 +45,10 @@ function buildTourSteps() {
     {
       element: "#card-sm",
       popover: {
-        title: "Live sensor readings",
+        title: tourT("tour.sensors_title", "Live sensor readings"),
         description: tourPopoverHtml(
-          "Live sensor readings",
-          "Soil moisture, temperature, and water level update every few seconds from your field hardware."
+          tourT("tour.sensors_title", "Live sensor readings"),
+          tourT("tour.sensors_body", "Soil moisture, temperature, and water level update from your field hardware.")
         ),
         side: "bottom",
         align: "start",
@@ -52,10 +57,10 @@ function buildTourSteps() {
     {
       element: "#advisory-list",
       popover: {
-        title: "Actionable alerts",
+        title: tourT("tour.alerts_title", "Actionable alerts"),
         description: tourPopoverHtml(
-          "Actionable alerts",
-          "Irrigation, drought, heat, and flood alerts appear here. Tap the speaker icon on any alert to hear it read aloud."
+          tourT("tour.alerts_title", "Actionable alerts"),
+          tourT("tour.alerts_body", "Irrigation, drought, heat, and flood alerts appear here.")
         ),
         side: "top",
         align: "start",
@@ -64,10 +69,10 @@ function buildTourSteps() {
     {
       element: "#irrigation-box",
       popover: {
-        title: "Smart irrigation",
+        title: tourT("tour.irrigation_title", "Smart irrigation"),
         description: tourPopoverHtml(
-          "Smart irrigation",
-          "Get a clear irrigate-now or wait recommendation with urgency, next check time, and suggested water volume."
+          tourT("tour.irrigation_title", "Smart irrigation"),
+          tourT("tour.irrigation_body", "Get a clear irrigate-now or wait recommendation.")
         ),
         side: "top",
         align: "start",
@@ -76,10 +81,10 @@ function buildTourSteps() {
     {
       element: "#risk-bars",
       popover: {
-        title: "Environmental risk",
+        title: tourT("tour.risk_title", "Environmental risk"),
         description: tourPopoverHtml(
-          "Environmental risk",
-          "Track drought, flood, heat, and disease-climate yield risk scores. Use Refresh Advice to update."
+          tourT("tour.risk_title", "Environmental risk"),
+          tourT("tour.risk_body", "Track drought, flood, heat, and disease-climate yield risk scores.")
         ),
         side: "left",
         align: "start",
@@ -88,10 +93,10 @@ function buildTourSteps() {
     {
       element: "#btn-vision",
       popover: {
-        title: "Crop health scan",
+        title: tourT("tour.vision_title", "Crop health scan"),
         description: tourPopoverHtml(
-          "Crop health scan",
-          "Upload a leaf photo or run a demo to detect disease, pest damage, and nutrient issues on-device."
+          tourT("tour.vision_title", "Crop health scan"),
+          tourT("tour.vision_body", "Upload a leaf photo or run a demo to detect disease, pest, and nutrient issues.")
         ),
         side: "top",
         align: "start",
@@ -100,10 +105,10 @@ function buildTourSteps() {
     {
       element: "#btn-predict",
       popover: {
-        title: "Crop prediction",
+        title: tourT("tour.predict_title", "Crop prediction"),
         description: tourPopoverHtml(
-          "Crop prediction",
-          "When sensors are online, predict the best crop from live conditions. Speaker icons read results aloud."
+          tourT("tour.predict_title", "Crop prediction"),
+          tourT("tour.predict_body", "When sensors are online, predict the best crop from live conditions.")
         ),
         side: "top",
         align: "start",
@@ -112,10 +117,10 @@ function buildTourSteps() {
     {
       element: "#analyticsChart",
       popover: {
-        title: "Farm analytics",
+        title: tourT("tour.analytics_title", "Farm analytics"),
         description: tourPopoverHtml(
-          "Farm analytics",
-          "Review moisture and yield-risk trends over time to spot patterns in your field performance."
+          tourT("tour.analytics_title", "Farm analytics"),
+          tourT("tour.analytics_body", "Review moisture and yield-risk trends over time.")
         ),
         side: "top",
         align: "center",
@@ -154,9 +159,9 @@ function startProductTour() {
     stagePadding: 8,
     stageRadius: 8,
     popoverClass: "agrisetu-tour-popover",
-    nextBtnText: "Next →",
-    prevBtnText: "← Back",
-    doneBtnText: "Finish tour",
+    nextBtnText: tourT("tour.next", "Next →"),
+    prevBtnText: tourT("tour.prev", "← Back"),
+    doneBtnText: tourT("tour.done", "Finish tour"),
     steps: buildTourSteps(),
     onDestroyed: markTourComplete,
   });

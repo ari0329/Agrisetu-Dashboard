@@ -2,6 +2,14 @@
 
 let currentTtsAudio = null;
 
+function ttsLang() {
+  return window.i18n?.lang || window.AGRISETU_LANG || "en";
+}
+
+function ttsLabel(key, fallback = "Listen") {
+  return window.t ? window.t(key) : fallback;
+}
+
 function encodeTtsAttr(text) {
   return encodeURIComponent(String(text || "").trim());
 }
@@ -25,7 +33,7 @@ function ttsBtn(text, label = "Listen") {
 async function playTts(text) {
   const spoken = decodeTtsAttr(encodeTtsAttr(text));
   if (!spoken) {
-    if (typeof toast === "function") toast("Nothing to read aloud.", "warning");
+    if (typeof toast === "function") toast(ttsLabel("tts.nothing_to_read", "Nothing to read aloud."), "warning");
     return;
   }
 
@@ -41,7 +49,7 @@ async function playTts(text) {
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: spoken }),
+      body: JSON.stringify({ text: spoken, lang: ttsLang() }),
     });
 
     if (!res.ok) {
@@ -58,7 +66,9 @@ async function playTts(text) {
     };
     await currentTtsAudio.play();
   } catch (err) {
-    if (typeof toast === "function") toast(`Speech error: ${err.message}`, "error");
+    if (typeof toast === "function") {
+      toast(ttsLabel("tts.speech_error", "Speech error: {msg}").replace("{msg}", err.message), "error");
+    }
     console.warn("TTS error:", err);
   }
 }
@@ -79,29 +89,43 @@ function bindTtsDelegation() {
 }
 
 function collectAdvisorySpeech(bundle) {
-  if (!bundle) return "No advisory data available.";
+  if (!bundle) return ttsLabel("tts.no_advisory", "No advisory data available.");
   const parts = [];
   (bundle.advisories || []).forEach((a) => {
     parts.push(`${a.title}. ${a.detail}`);
   });
   const irr = bundle.irrigation || {};
-  if (irr.message) parts.push(`Smart irrigation. ${irr.message}`);
+  if (irr.message) parts.push(`${ttsLabel("tts.smart_irrigation", "Smart irrigation.")} ${irr.message}`);
   const risks = bundle.environmental_risks || {};
   if (risks.yield_risk_pct != null) {
-    const regime = risks.predicted_regime ? ` Predicted regime ${risks.predicted_regime}.` : "";
-    const source = risks.prediction_source === "ml" ? " Machine learning model." : "";
-    parts.push(`Overall yield risk ${risks.yield_risk_pct} percent. Level ${risks.overall_level || "unknown"}.${regime}${source}`);
+    const regime = risks.predicted_regime
+      ? ttsLabel("tts.predicted_regime", " Predicted regime {regime}.").replace("{regime}", risks.predicted_regime)
+      : "";
+    const source = risks.prediction_source === "ml"
+      ? ttsLabel("tts.ml_model", " Machine learning model.")
+      : "";
+    parts.push(
+      ttsLabel("tts.overall_yield_risk", "Overall yield risk {pct} percent. Level {level}.")
+        .replace("{pct}", risks.yield_risk_pct)
+        .replace("{level}", risks.overall_level_label || risks.overall_level || "unknown")
+      + regime + source
+    );
   }
   (risks.risks || []).forEach((r) => {
-    parts.push(`${r.label}. Score ${r.score}. Level ${r.level}.`);
+    parts.push(
+      ttsLabel("tts.risk_row", "{label}. Score {score}. Level {level}.")
+        .replace("{label}", r.label)
+        .replace("{score}", r.score)
+        .replace("{level}", r.level_label || r.level)
+    );
   });
-  return parts.join(" ") || "No alerts at this time.";
+  return parts.join(" ") || ttsLabel("tts.no_alerts", "No alerts at this time.");
 }
 
 function collectVisionSpeech(v) {
-  if (!v) return "No vision scan results yet.";
+  if (!v) return ttsLabel("tts.no_vision", "No vision scan results yet.");
   const parts = [
-    `Field health score ${v.field_health_score ?? "unknown"}.`,
+    ttsLabel("tts.field_health_score", "Field health score {score}.").replace("{score}", v.field_health_score ?? "unknown"),
     v.disease_summary || "",
     v.pest_summary || "",
     v.nutrient_summary || "",
@@ -111,18 +135,20 @@ function collectVisionSpeech(v) {
 }
 
 function collectPredictionSpeech(p) {
-  if (!p) return "No prediction yet. Run predict to get a crop recommendation.";
+  if (!p) return ttsLabel("tts.no_prediction", "No prediction yet. Run predict to get a crop recommendation.");
   const parts = [
-    `Recommended crop ${p.recommended_crop}.`,
-    `Confidence ${p.confidence_pct} percent.`,
-    `Growth period ${p.growth_months} months.`,
+    ttsLabel("tts.recommended_crop", "Recommended crop {crop}.").replace("{crop}", p.recommended_crop),
+    ttsLabel("tts.confidence_pct", "Confidence {pct} percent.").replace("{pct}", p.confidence_pct),
+    ttsLabel("tts.growth_period", "Growth period {months} months.").replace("{months}", p.growth_months),
   ];
   if (p.user_crop) {
-    parts.push(`Your preferred crop was ${p.user_crop}.`);
+    parts.push(ttsLabel("tts.preferred_was", "Your preferred crop was {crop}.").replace("{crop}", p.user_crop));
   }
   if (p.explanation) parts.push(p.explanation);
   (p.alerts || []).forEach((a) => parts.push(a.msg));
-  if (p.prediction_text && !p.explanation) parts.push(`Your note: ${p.prediction_text}`);
+  if (p.prediction_text && !p.explanation) {
+    parts.push(ttsLabel("tts.your_note", "Your note: {text}").replace("{text}", p.prediction_text));
+  }
   return parts.join(" ");
 }
 
