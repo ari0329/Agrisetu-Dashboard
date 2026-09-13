@@ -665,13 +665,19 @@ def receive_arduino_data():
         L3 = int(body.get("L3", 0))
         L4 = int(body.get("L4", 0))
 
+        air_temp_raw = body.get("air_temperature")
+        water_level_raw = body.get("water_level")
+        if water_level_raw is not None:
+            water_level = min(max(round(float(water_level_raw)), 0), 100)
+        else:
+            water_level = min(L1*25 + L2*25 + L3*25 + L4*25, 100)
         normalized = {
             "soil_moisture":    round(float(body.get("soil_moisture", 0)), 1),
             "soil_temperature": round(float(body.get("soil_temperature", 25)), 1),
-            "water_level":      min(L1*25 + L2*25 + L3*25 + L4*25, 100),
+            "water_level":      water_level,
             "water_status":     str(body.get("water_status", ""))[:40],
             "L1": L1, "L2": L2, "L3": L3, "L4": L4,
-            "air_temperature":  None,
+            "air_temperature":  round(float(air_temp_raw), 1) if air_temp_raw is not None else None,
             "humidity":         None,
             "rainfall":         None,
             "light_intensity":  None,

@@ -128,7 +128,9 @@ class AgriSetuAppTest(unittest.TestCase):
                 "device_id": "DEVICE-001",
                 "soil_moisture": 51.2,
                 "soil_temperature": 24.3,
-                "L1": 1,
+                "air_temperature": 31.5,
+                "water_level": 42,
+                "L1": 0,
                 "L2": 0,
                 "L3": 0,
                 "L4": 0,
@@ -136,6 +138,10 @@ class AgriSetuAppTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.get_json()["success"])
+        save_device_telemetry.assert_called_once()
+        stored = save_device_telemetry.call_args[0][1]
+        self.assertEqual(stored["air_temperature"], 31.5)
+        self.assertEqual(stored["water_level"], 42)
 
 
 if __name__ == "__main__":
