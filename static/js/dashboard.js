@@ -578,15 +578,15 @@ function initAnalyticsChart() {
         {
           label: t("ui.chart_analytics_moisture"),
           data: [],
-          borderColor: "#A8FF3E",
-          backgroundColor: "rgba(168,255,62,0.08)",
+          borderColor: "#52B788",
+          backgroundColor: "rgba(82,183,136,0.08)",
           borderWidth: 2, pointRadius: 2, tension: 0.4, fill: true, yAxisID: "y",
         },
         {
           label: t("ui.chart_analytics_risk"),
           data: [],
-          borderColor: "#FF6B6B",
-          backgroundColor: "rgba(255,107,107,0.06)",
+          borderColor: "#E05C5C",
+          backgroundColor: "rgba(224,92,92,0.06)",
           borderWidth: 2, pointRadius: 2, tension: 0.4, fill: true, yAxisID: "y1",
         },
       ],
@@ -597,22 +597,22 @@ function initAnalyticsChart() {
       interaction: { mode: "index", intersect: false },
       plugins: {
         legend: {
-          labels: { color: "#C8DEC9", font: { family: "JetBrains Mono", size: 11 } },
+          labels: { color: "#D8E4DC", font: { family: "Calibri", size: 11 } },
         },
       },
       scales: {
         x: {
-          ticks: { color: "#4A6350", font: { family: "JetBrains Mono", size: 10 } },
-          grid:  { color: "rgba(168,255,62,.06)" },
+          ticks: { color: "#6B8575", font: { family: "Calibri", size: 10 } },
+          grid:  { color: "rgba(82,183,136,.06)" },
         },
         y: {
           position: "left", min: 0, max: 100,
-          ticks: { color: "#A8FF3E", font: { family: "JetBrains Mono", size: 10 } },
-          grid:  { color: "rgba(168,255,62,.08)" },
+          ticks: { color: "#52B788", font: { family: "Calibri", size: 10 } },
+          grid:  { color: "rgba(82,183,136,.08)" },
         },
         y1: {
           position: "right", min: 0, max: 100,
-          ticks: { color: "#FF6B6B", font: { family: "JetBrains Mono", size: 10 } },
+          ticks: { color: "#E05C5C", font: { family: "Calibri", size: 10 } },
           grid:  { display: false },
         },
       },
@@ -862,20 +862,20 @@ function initChart() {
         {
           label: t("ui.chart_moisture"),
           data: window.state.historyMoist,
-          borderColor: "#A8FF3E",
-          backgroundColor: "rgba(168,255,62,0.08)",
+          borderColor: "#52B788",
+          backgroundColor: "rgba(82,183,136,0.08)",
           borderWidth: 2, pointRadius: 3,
-          pointBackgroundColor: "#A8FF3E",
+          pointBackgroundColor: "#52B788",
           tension: 0.45, fill: true, yAxisID: "y",
           spanGaps: true,
         },
         {
           label: t("ui.chart_temp"),
           data: window.state.historyTemp,
-          borderColor: "#FFAB40",
-          backgroundColor: "rgba(255,171,64,0.06)",
+          borderColor: "#E9A030",
+          backgroundColor: "rgba(233,160,48,0.06)",
           borderWidth: 2, pointRadius: 3,
-          pointBackgroundColor: "#FFAB40",
+          pointBackgroundColor: "#E9A030",
           tension: 0.45, fill: true, yAxisID: "y1",
           spanGaps: true,
         },
@@ -887,29 +887,29 @@ function initChart() {
       interaction: { mode: "index", intersect: false },
       plugins: {
         legend: {
-          labels: { color: "#C8DEC9", font: { family: "JetBrains Mono", size: 11 } },
+          labels: { color: "#D8E4DC", font: { family: "Calibri", size: 11 } },
         },
         tooltip: {
-          backgroundColor: "#0D1810",
-          borderColor: "rgba(168,255,62,.3)", borderWidth: 1,
-          titleColor: "#A8FF3E", bodyColor: "#C8DEC9",
-          titleFont: { family: "JetBrains Mono", size: 11 },
-          bodyFont:  { family: "JetBrains Mono", size: 11 },
+          backgroundColor: "#162019",
+          borderColor: "rgba(82,183,136,.3)", borderWidth: 1,
+          titleColor: "#52B788", bodyColor: "#D8E4DC",
+          titleFont: { family: "Calibri", size: 11 },
+          bodyFont:  { family: "Calibri", size: 11 },
         },
       },
       scales: {
         x: {
-          ticks: { color: "#4A6350", font: { family: "JetBrains Mono", size: 10 }, maxRotation: 0 },
-          grid:  { color: "rgba(168,255,62,.06)" },
+          ticks: { color: "#6B8575", font: { family: "Calibri", size: 10 }, maxRotation: 0 },
+          grid:  { color: "rgba(82,183,136,.06)" },
         },
         y: {
           position: "left", min: 0, max: 100,
-          ticks: { color: "#A8FF3E", font: { family: "JetBrains Mono", size: 10 } },
-          grid:  { color: "rgba(168,255,62,.08)" },
+          ticks: { color: "#52B788", font: { family: "Calibri", size: 10 } },
+          grid:  { color: "rgba(82,183,136,.08)" },
         },
         y1: {
           position: "right", min: 0, max: 60,
-          ticks: { color: "#FFAB40", font: { family: "JetBrains Mono", size: 10 } },
+          ticks: { color: "#E9A030", font: { family: "Calibri", size: 10 } },
           grid:  { display: false },
         },
       },
@@ -1034,7 +1034,7 @@ function renderPrediction(p) {
   const conf   = p.confidence_pct;
   const circum = 2 * Math.PI * 44;
   const offset = circum * (1 - conf / 100);
-  const stroke = conf >= 80 ? "#A8FF3E" : conf >= 60 ? "#FFAB40" : "#FF6B6B";
+  const stroke = conf >= 80 ? "#52B788" : conf >= 60 ? "#E9A030" : "#E05C5C";
 
   const alertsHTML = (p.alerts || []).length
     ? p.alerts.map(a =>

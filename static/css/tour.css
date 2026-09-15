@@ -3,7 +3,7 @@
 .driver-popover.agrisetu-tour-popover {
   background: var(--bg-2, #111);
   color: var(--text, #e8e8e8);
-  border: 1px solid var(--border-glow, rgba(168, 255, 62, 0.35));
+  border: 1px solid var(--border-glow, rgba(82, 183, 136, 0.35));
   border-radius: var(--radius, 10px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
   max-width: 360px;
@@ -12,7 +12,7 @@
 .driver-popover.agrisetu-tour-popover .driver-popover-title {
   font-family: var(--font-head, sans-serif);
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 600;
   color: #fff;
 }
 
@@ -33,7 +33,7 @@
 .driver-popover.agrisetu-tour-popover .driver-popover-progress-text {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--accent, #a8ff3e);
+  color: var(--accent, #52b788);
 }
 
 .driver-popover.agrisetu-tour-popover button.driver-popover-next-btn,
@@ -47,9 +47,9 @@
 }
 
 .driver-popover.agrisetu-tour-popover button.driver-popover-next-btn {
-  background: var(--accent-dim, rgba(168, 255, 62, 0.15));
-  border-color: var(--border-glow, rgba(168, 255, 62, 0.35));
-  color: var(--accent, #a8ff3e);
+  background: var(--accent-dim, rgba(82, 183, 136, 0.12));
+  border-color: var(--border-glow, rgba(82, 183, 136, 0.35));
+  color: var(--accent, #52b788);
 }
 
 .driver-popover.agrisetu-tour-popover button.driver-popover-close-btn {
@@ -64,5 +64,5 @@
 }
 
 .driver-active-element {
-  outline: 2px solid var(--accent, #a8ff3e) !important;
+  outline: 2px solid var(--accent, #52b788) !important;
 }
